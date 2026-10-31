@@ -20,6 +20,6 @@ describe("app server", () => {
   it("responds to /health", async () => {
     const res = await fetch(`${baseUrl}/health`);
     expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({ status: "ok" });
+    expect(await res.json()).toEqual({ status: "ok", extractor: "fake" });
   });
 });

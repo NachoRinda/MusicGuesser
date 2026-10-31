@@ -1,5 +1,14 @@
-import { MAX_NAME_LENGTH, ROOM_CODE_LENGTH, ROOM_ERROR_MESSAGES, type RoomState } from "@mg/shared";
-import { useEffect, useRef, useState, type FormEvent } from "react";
+import {
+  MAX_NAME_LENGTH,
+  MAX_SCREENSHOTS_PER_UPLOAD,
+  ROOM_CODE_LENGTH,
+  ROOM_ERROR_MESSAGES,
+  extractionProblemMessage,
+  type PlayerTracks,
+  type RoomState,
+} from "@mg/shared";
+import { useEffect, useRef, useState, type ChangeEvent, type FormEvent } from "react";
+import { prepareScreenshot } from "../images.js";
 import { navigate } from "../router.js";
 import { createSocket, type AppSocket } from "../socket.js";
 import { playerTokenKey, storage } from "../storage.js";
@@ -43,6 +52,7 @@ function RoomView({ code }: { code: string }) {
   const [status, setStatus] = useState<Status>("connecting");
   const [room, setRoom] = useState<RoomState | null>(null);
   const [playerId, setPlayerId] = useState<string | null>(null);
+  const [myTracks, setMyTracks] = useState<PlayerTracks | null>(null);
   const [name, setName] = useState("");
   const [error, setError] = useState<string | null>(null);
 
@@ -50,6 +60,7 @@ function RoomView({ code }: { code: string }) {
     const socket = createSocket();
     socketRef.current = socket;
     socket.on("room:state", setRoom);
+    socket.on("player:tracks", setMyTracks);
     // On every (re)connection, come back as the same player if we have a token for this room.
     socket.on("connect", async () => {
       const token = storage.get(playerTokenKey(code));
@@ -121,20 +132,104 @@ function RoomView({ code }: { code: string }) {
     );
   }
 
+  const me = room?.players.find((p) => p.id === playerId);
+
   if (room?.phase === "playing") {
     return (
       <main className="center">
         <h1>¡Arrancamos!</h1>
+        {me && !me.inGame && <p className="muted">La partida empezó sin vos: no tenías canciones listas.</p>}
       </main>
     );
   }
 
-  const me = room?.players.find((p) => p.id === playerId);
   return (
     <main className="center">
       <h1>¡Hola, {me?.name ?? "…"}!</h1>
-      <p className="muted">Esperando a que la TV empiece la partida.</p>
+      {socketRef.current && <Screenshots socket={socketRef.current} tracks={myTracks} />}
       {room && <PlayerList players={room.players} meId={playerId ?? undefined} />}
     </main>
+  );
+}
+
+/** Upload 1–2 screenshots and see (read-only) what was read from them. */
+function Screenshots({ socket, tracks }: { socket: AppSocket; tracks: PlayerTracks | null }) {
+  const inputRef = useRef<HTMLInputElement>(null);
+  const [sending, setSending] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const status = tracks?.status ?? "noTracks";
+
+  async function upload(e: ChangeEvent<HTMLInputElement>) {
+    const files = [...(e.target.files ?? [])];
+    e.target.value = ""; // so picking the same files again still triggers a change
+    if (files.length === 0) return;
+    if (files.length > MAX_SCREENSHOTS_PER_UPLOAD) return setError(ROOM_ERROR_MESSAGES.INVALID_UPLOAD);
+    setSending(true);
+    setError(null);
+    try {
+      const images = await Promise.all(files.map(prepareScreenshot));
+      const res = await socket.emitWithAck("player:uploadScreenshots", { images });
+      if (!res.ok) setError(ROOM_ERROR_MESSAGES[res.error]);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "No pudimos subir la captura");
+    } finally {
+      setSending(false);
+    }
+  }
+
+  const busy = sending || status === "extracting";
+  return (
+    <section className="screenshots">
+      {status === "noTracks" && <Instructions />}
+      {status === "extracting" && <p className="muted">Leyendo tus canciones…</p>}
+      {status === "ready" && <p className="ok">¡Listo! Leímos {tracks!.tracks.length} canciones. Esperá a que la TV empiece.</p>}
+      {(status === "invalid" || status === "error") && tracks?.problem && (
+        <p className="error">{extractionProblemMessage(tracks.problem, tracks.tracks.length)}</p>
+      )}
+
+      <input
+        ref={inputRef}
+        type="file"
+        accept="image/*"
+        multiple
+        hidden
+        onChange={upload}
+        aria-label="Elegir capturas"
+      />
+      <button onClick={() => inputRef.current?.click()} disabled={busy}>
+        {sending ? "Subiendo…" : status === "noTracks" ? "Subir capturas" : "Reintentar captura"}
+      </button>
+      {error && <p className="error">{error}</p>}
+
+      {tracks && tracks.tracks.length > 0 && (
+        <ol className="tracks">
+          {tracks.tracks.map((t, i) => (
+            <li key={i}>
+              <strong>{t.title}</strong> — {t.artist}
+            </li>
+          ))}
+        </ol>
+      )}
+    </section>
+  );
+}
+
+function Instructions() {
+  return (
+    <div className="instructions">
+      <p>Subí 1 o 2 capturas de tu playlist de <strong>más escuchadas</strong>:</p>
+      <ul>
+        <li>
+          <strong>Spotify</strong>: buscá “En repetición” (On Repeat)
+        </li>
+        <li>
+          <strong>YouTube Music</strong>: “Mix de repetición” (Replay Mix)
+        </li>
+        <li>
+          <strong>Apple Music</strong>: tu “Replay” del año
+        </li>
+      </ul>
+      <p className="muted">Se tienen que ver al menos 10 canciones (podés mandar 2 capturas).</p>
+    </div>
   );
 }

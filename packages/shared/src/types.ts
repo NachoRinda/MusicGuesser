@@ -13,4 +13,6 @@ export interface Player {
 /** Health payload shared by the server endpoint and any client that pings it. */
 export interface HealthResponse {
   status: "ok";
+  /** Which screenshot reader is active: the playtest refuses to run against the real one. */
+  extractor: "fake" | "claude";
 }

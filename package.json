@@ -14,7 +14,8 @@
     "test:watch": "vitest",
     "lint": "eslint .",
     "verify": "npm run typecheck && npm run lint && npm test",
-    "playtest": "node scripts/playtest.mjs"
+    "playtest": "node scripts/playtest.mjs",
+    "eval:extraction": "tsx apps/server/src/extraction/eval.ts"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

@@ -39,11 +39,13 @@ export function HostPage() {
     return (
       <main className="center">
         <h1>¡Arrancamos!</h1>
+        <p className="muted">Juegan: {room.players.filter((p) => p.inGame).map((p) => p.name).join(", ")}</p>
       </main>
     );
   }
 
   const connected = room.players.filter((p) => p.connected).length;
+  const ready = room.players.filter((p) => p.connected && p.status === "ready").length;
   return (
     <main className="host">
       <section className="join">
@@ -53,13 +55,17 @@ export function HostPage() {
         {joinUrl && <p className="muted">{joinUrl}</p>}
       </section>
       <section>
-        <h2>Jugadores ({connected})</h2>
+        <h2>
+          Jugadores ({connected}) · listos: {ready}
+        </h2>
         <PlayerList players={room.players} />
-        <button onClick={start} disabled={connected < MIN_PLAYERS_TO_START}>
+        <button onClick={start} disabled={ready < MIN_PLAYERS_TO_START}>
           Empezar
         </button>
-        {connected < MIN_PLAYERS_TO_START && (
-          <p className="muted">Se necesitan al menos {MIN_PLAYERS_TO_START} jugadores conectados.</p>
+        {ready < MIN_PLAYERS_TO_START && (
+          <p className="muted">
+            Se necesitan al menos {MIN_PLAYERS_TO_START} jugadores listos (con su captura leída).
+          </p>
         )}
         {error && <p className="error">{error}</p>}
       </section>

@@ -4,6 +4,7 @@ import { Server } from "socket.io";
 import type { HealthResponse, NetworkInfo } from "@mg/shared";
 import type { Extractor } from "./extraction/Extractor.js";
 import { MAX_SCREENSHOT_BYTES, MAX_SCREENSHOTS_PER_UPLOAD } from "@mg/shared";
+import { FakeExtractor } from "./extraction/FakeExtractor.js";
 import { createExtractorFromEnv } from "./extraction/fromEnv.js";
 import { detectLanHost } from "./network.js";
 import { RoomStore } from "./rooms/RoomStore.js";
@@ -28,7 +29,7 @@ export function createAppServer({
   const app = express();
 
   app.get("/health", (_req, res) => {
-    const body: HealthResponse = { status: "ok" };
+    const body: HealthResponse = { status: "ok", extractor: extractor instanceof FakeExtractor ? "fake" : "claude" };
     res.json(body);
   });
 

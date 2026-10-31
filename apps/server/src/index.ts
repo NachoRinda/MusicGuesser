@@ -1,4 +1,7 @@
 import { createAppServer } from "./app.js";
+import { loadRootEnv } from "./env.js";
+
+loadRootEnv();
 
 const port = Number(process.env.PORT ?? 3000);
 const { httpServer } = createAppServer();

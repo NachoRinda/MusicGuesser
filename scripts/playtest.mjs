@@ -15,6 +15,29 @@ const WINDOWS_CHROMES = [
 
 // ---------- Escenarios (uno por fase; agregar los nuevos al final) ----------
 
+/** Valid 1×1 PNG. */
+const PNG_1PX = Buffer.from(
+  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==",
+  "base64",
+);
+
+/**
+ * A "screenshot" for the FakeExtractor: a real PNG with a tag appended after the image data
+ * (browsers ignore it). Tags MG-INVALID / MG-FEW / MG-ERROR pick the outcome; anything else reads
+ * 12 fake tracks (varying with the tag).
+ */
+const fakeShot = (tag) => ({ name: `${tag}.png`, mimeType: "image/png", buffer: Buffer.concat([PNG_1PX, Buffer.from(tag)]) });
+
+/** Picks screenshots on a phone (the input is hidden behind the "Subir capturas" button). */
+async function pickShots(page, ...tags) {
+  await page.locator('input[type="file"]').setInputFiles(tags.map(fakeShot));
+}
+
+async function uploadOk(page, tag) {
+  await pickShots(page, tag);
+  await page.getByText("¡Listo! Leímos").waitFor({ timeout: 5000 });
+}
+
 /** Fase 2: sala en tiempo real (spec 02). */
 async function sala({ browser, check, shot }) {
   const tv = await (await browser.newContext({ viewport: { width: 1280, height: 720 } })).newPage();
@@ -57,7 +80,9 @@ async function sala({ browser, check, shot }) {
     await tv.locator(".players li", { hasText: "Caro" }).waitFor({ timeout: 1000 });
     return `${Date.now() - caro.clickedAt} ms`;
   });
-  await check("Con 3 jugadores, Empezar se habilita", async () => {
+  await check("Con 3 jugadores listos (captura leída), Empezar se habilita", async () => {
+    for (const [p, tag] of [[ana, "ana"], [beto, "beto"], [caro, "caro"]]) await uploadOk(p.page, tag);
+    await tv.locator('.players li[data-status="ready"]').nth(2).waitFor(T);
     if (!(await startBtn.isEnabled())) throw new Error("deshabilitado");
   });
   await check("El celular ve el lobby con todos", async () => {
@@ -133,7 +158,118 @@ async function sala({ browser, check, shot }) {
   });
 }
 
-const SCENARIOS = { sala };
+/** Fase 3: subir capturas y quedar listo (spec 03), con el FakeExtractor. */
+async function capturas({ browser, check, shot }) {
+  const tv = await (await browser.newContext({ viewport: { width: 1280, height: 720 } })).newPage();
+  await tv.goto(`${BASE}/host`);
+  const code = (await tv.locator(".code").textContent({ timeout: 5000 })).trim();
+  const startBtn = tv.getByRole("button", { name: "Empezar" });
+  const tvRow = (name) => tv.locator(".players li", { hasText: name });
+
+  async function joinPhone(name) {
+    const ctx = await browser.newContext({ ...devices["iPhone 13"] });
+    const page = await ctx.newPage();
+    await page.goto(`${BASE}/play/${code}`);
+    await page.getByPlaceholder("Tu nombre").fill(name);
+    await page.getByRole("button", { name: "Entrar" }).click();
+    await page.getByText(`¡Hola, ${name}!`).waitFor(T);
+    return { ctx, page };
+  }
+
+  const ana = await joinPhone("Ana");
+  const beto = await joinPhone("Beto");
+  const caro = await joinPhone("Caro");
+  const dani = await joinPhone("Dani");
+
+  await check("Recién unidos: instrucciones, 'Subir capturas' y TV con 'sin captura'", async () => {
+    await ana.page.getByText("En repetición").waitFor(T);
+    await ana.page.getByRole("button", { name: "Subir capturas" }).waitFor(T);
+    await tvRow("Dani").getByText("sin captura").waitFor(T);
+    if (await startBtn.isEnabled()) throw new Error("Empezar habilitado sin nadie listo");
+  });
+  await shot(ana.page, "capturas-01-celular-instrucciones");
+
+  let anaTitles = [];
+  await check("Ana sube 2 capturas → 'Leyendo…' en celular y TV → listo con su lista", async () => {
+    await pickShots(ana.page, "ana-1", "ana-2");
+    await ana.page.getByText("Leyendo tus canciones…").waitFor(T);
+    await tvRow("Ana").getByText("leyendo captura…").waitFor(T);
+    await shot(tv, "capturas-02-tv-leyendo");
+    await ana.page.getByText("¡Listo! Leímos").waitFor({ timeout: 5000 });
+    await tvRow("Ana").getByText(/listo \(\d+ canciones\)/).waitFor(T);
+    anaTitles = await ana.page.locator(".tracks li strong").allTextContents();
+    if (anaTitles.length < 10) throw new Error(`solo ${anaTitles.length} canciones`);
+    return `${anaTitles.length} canciones`;
+  });
+  await shot(ana.page, "capturas-03-celular-listo");
+
+  await check("La lista es de solo lectura (sin campos ni botones por canción)", async () => {
+    if (await ana.page.locator(".tracks input, .tracks button, .tracks [contenteditable]").count()) {
+      throw new Error("hay controles de edición");
+    }
+    await ana.page.getByRole("button", { name: "Reintentar captura" }).waitFor(T);
+  });
+
+  await check("La TV no muestra las canciones", async () => {
+    const tvText = await tv.locator("body").textContent();
+    const leaked = anaTitles.filter((t) => tvText.includes(t));
+    if (leaked.length) throw new Error(`la TV muestra: ${leaked.join(", ")}`);
+  });
+
+  await check("Beto sube algo que no es playlist → aviso; reintenta → listo", async () => {
+    await pickShots(beto.page, "MG-INVALID");
+    await beto.page.getByText("no parece una playlist").waitFor({ timeout: 5000 });
+    await tvRow("Beto").getByText("captura inválida").waitFor(T);
+    await shot(beto.page, "capturas-04-celular-no-es-playlist");
+    await uploadOk(beto.page, "beto");
+  });
+
+  await check("Caro sube una captura con 5 canciones → 'necesitamos al menos 10' y Empezar sigue deshabilitado", async () => {
+    await pickShots(caro.page, "MG-FEW");
+    await caro.page.getByText("Leímos 5 canciones, necesitamos al menos 10").waitFor({ timeout: 5000 });
+    if ((await caro.page.locator(".tracks li").count()) !== 5) throw new Error("no muestra lo leído");
+    await shot(caro.page, "capturas-05-celular-pocas");
+    if (await startBtn.isEnabled()) throw new Error("Empezar habilitado con 2 listos");
+  });
+
+  await check("Caro reintenta → listo → con 3 listos se habilita Empezar", async () => {
+    await uploadOk(caro.page, "caro");
+    if ((await caro.page.locator(".tracks li").count()) === 5) throw new Error("mezcló envíos");
+    await tvRow("Caro").getByText(/listo/).waitFor(T);
+    await tv.locator("button:not(:disabled)", { hasText: "Empezar" }).waitFor(T);
+  });
+  await shot(tv, "capturas-06-tv-3-listos");
+
+  await check("Elegir 3 imágenes → error sin enviar", async () => {
+    await pickShots(dani.page, "d1", "d2", "d3");
+    await dani.page.getByText("Subí 1 o 2 imágenes").waitFor(T);
+    await tvRow("Dani").getByText("sin captura").waitFor(T);
+  });
+
+  await check("Falla técnica → 'No pudimos leer la captura' y Dani no queda listo", async () => {
+    await pickShots(dani.page, "MG-ERROR");
+    await dani.page.getByText("No pudimos leer la captura").waitFor({ timeout: 5000 });
+    await tvRow("Dani").getByText("error al leer").waitFor(T);
+  });
+
+  await check("Recargar el celular conserva lo leído", async () => {
+    await ana.page.reload();
+    await ana.page.getByText("¡Listo! Leímos").waitFor(T);
+    const again = await ana.page.locator(".tracks li strong").allTextContents();
+    if (again.join("|") !== anaTitles.join("|")) throw new Error("cambió la lista");
+  });
+
+  await check("Empezar → juegan los 3 listos; Dani queda afuera con aviso", async () => {
+    await startBtn.click();
+    await tv.getByText("Juegan: Ana, Beto, Caro").waitFor(T);
+    for (const p of [ana, beto, caro]) await p.page.getByText("¡Arrancamos!").waitFor(T);
+    await dani.page.getByText("La partida empezó sin vos").waitFor(T);
+    if (await ana.page.getByText("La partida empezó sin vos").count()) throw new Error("Ana figura afuera");
+  });
+  await shot(dani.page, "capturas-07-celular-afuera");
+}
+
+const SCENARIOS = { sala, capturas };
 
 // ---------- Infraestructura ----------
 
@@ -156,9 +292,21 @@ async function waitUntil(fn, ms, what) {
 
 /** Starts `npm run dev` unless the app is already up; returns a stop function. */
 async function ensureDevServer() {
-  if ((await isUp(`${BASE}/health`)) && (await isUp(`${BASE}/host`))) return () => {};
-  console.log("Levantando npm run dev…");
-  const dev = spawn("npm", ["run", "dev"], { detached: true, stdio: "ignore" });
+  if ((await isUp(`${BASE}/health`)) && (await isUp(`${BASE}/host`))) {
+    const { extractor } = await (await fetch(`${BASE}/health`)).json();
+    if (extractor !== "fake") {
+      throw new Error(
+        "Ya hay un dev server con el extractor real (gastaría API con imágenes falsas). Cerralo o levantalo con MG_EXTRACTOR=fake.",
+      );
+    }
+    return () => {};
+  }
+  console.log("Levantando npm run dev (MG_EXTRACTOR=fake)…");
+  const dev = spawn("npm", ["run", "dev"], {
+    detached: true,
+    stdio: "ignore",
+    env: { ...process.env, MG_EXTRACTOR: "fake", MG_FAKE_DELAY_MS: "700" },
+  });
   await waitUntil(async () => (await isUp(`${BASE}/health`)) && (await isUp(`${BASE}/host`)), 30_000, "al dev server");
   return () => {
     try {

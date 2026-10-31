@@ -1,6 +1,6 @@
 # Spec 03 — Extracción de capturas (Claude vision)
 
-**Estado: aprobado** (2026-10-31). Decisión al aprobar: se acepta **cualquier playlist** (no solo las de "más escuchadas"); solo se rechaza lo que no es una playlist.
+**Estado: aprobado** (2026-10-31). Implementado 2026-10-31 salvo eval con API real y prueba manual (ver criterios); contrato ajustado al implementar (ver "Cambios al implementar"). Decisión al aprobar: se acepta **cualquier playlist** (no solo las de "más escuchadas"); solo se rechaza lo que no es una playlist.
 
 ## Objetivo
 Reemplazar las canciones falsas por las reales: cada jugador sube 1–2 capturas de su playlist autogenerada de "más escuchadas", un modelo con visión extrae título y artista, y el jugador queda **listo** cuando hay al menos 10 canciones válidas. La TV muestra quién está listo y solo deja empezar con ≥ 3 jugadores listos.
@@ -46,6 +46,16 @@ Reemplazar las canciones falsas por las reales: cada jugador sube 1–2 capturas
 - Errores nuevos: `NOT_ENOUGH_READY_PLAYERS`, `EXTRACTION_IN_PROGRESS`, `INVALID_UPLOAD` (0 o > 2 imágenes, tipo no soportado, demasiado grande), con mensaje en español.
 - La lógica de validación del resultado (dedupe, mínimo 10, rechazo) es pura (`evaluateExtraction`) y separada del extractor y de Socket.IO.
 
+## Cambios al implementar
+- `player:tracks` lleva `problem` (`notPlaylist` | `tooFew` | `failed`) en vez de un `message` armado: el texto en español sale de `extractionProblemMessage` en `packages/shared`.
+- `NOT_ENOUGH_READY_PLAYERS` **reemplaza** a `NOT_ENOUGH_PLAYERS` (ya no hay "empezar sin capturas").
+- `PublicPlayer` suma también `inGame` (si juega la partida en curso; `false` en el lobby).
+- Límite por imagen: **3,75 MB** (no 5 MB): la API limita a 5 MB *en base64*, que infla 4/3. El cliente recomprime a JPEG hasta entrar. `maxHttpBufferSize` ≈ 8,5 MB.
+- Imágenes que el navegador no puede decodificar pero son de tipo soportado y chicas se envían tal cual (el server/modelo decide). HEIC u otros formatos decodificables se convierten a JPEG.
+- `ClaudeExtractor`: `effort: "low"` (es transcripción; prioriza latencia), `fallbacks: "default"` (si un clasificador de seguridad rechaza, la API reintenta en otro modelo), timeout de 60 s y 1 reintento del SDK; el server corta igual a los 60 s.
+- Credenciales: el SDK acepta `ANTHROPIC_API_KEY`, `ANTHROPIC_AUTH_TOKEN` o un perfil de `ant auth login`. El server no falla al arrancar: avisa si no hay variable y cada envío sin credencial termina en `error`. El server carga el `.env` de la raíz.
+- `GET /health` informa `extractor: "fake" | "claude"`; el playtest se niega a correr contra un server con el extractor real (gastaría API con imágenes falsas) y levanta el suyo con `MG_EXTRACTOR=fake`.
+
 ## Eval de extracción (con la API real)
 - `npm run eval:extraction` recorre `fixtures/screenshots/*.{png,jpg,webp}` con su `*.expected.json` (`{ isPlaylist, tracks }`), llama a `ClaudeExtractor` y reporta por captura: clasificación correcta, recall y precisión de canciones (comparación normalizada).
 - **Meta**: clasificación correcta en el 100 % de los fixtures; recall ≥ 90 % y precisión ≥ 95 % promedio.
@@ -60,15 +70,15 @@ Reemplazar las canciones falsas por las reales: cada jugador sube 1–2 capturas
 - La misma canción en las 2 capturas (solapamiento al hacer scroll) → aparece una sola vez.
 
 ## Criterios de aceptación
-- [ ] `evaluateExtraction`: dedupe normalizado, mínimo 10, rechazo de lo que no es playlist, rechazo de envío mixto (tests unitarios).
-- [ ] `RoomStore`: estados del jugador, reemplazo de canciones al reintentar, `EXTRACTION_IN_PROGRESS`, `start` exige 3 listos y conectados, jugadores no listos quedan fuera (tests unitarios).
-- [ ] Integración por sockets con `FakeExtractor`: subir → `extracting` → `ready` difundido a la TV y `player:tracks` solo al dueño; validaciones de `INVALID_UPLOAD`.
-- [ ] `ClaudeExtractor` arma el request correcto y mapea la respuesta (test con el cliente de Anthropic mockeado); errores de API → `error`.
-- [ ] El estado difundido nunca incluye canciones ni tokens.
-- [ ] Ninguna ruta de código escribe imágenes a disco ni las loguea (revisión + test que espía `console`).
-- [ ] Escenario `capturas` en `npm run playtest`: 3 celulares suben capturas (uno inválido y luego reintenta), la TV ve los estados y empieza.
-- [ ] Eval con la API real sobre los fixtures cumple la meta.
-- [ ] Prueba manual: subir tu captura real desde tu celular.
+- [x] `evaluateExtraction`: dedupe normalizado, mínimo 10, rechazo de lo que no es playlist, rechazo de envío mixto (tests unitarios).
+- [x] `RoomStore`: estados del jugador, reemplazo de canciones al reintentar, `EXTRACTION_IN_PROGRESS`, `start` exige 3 listos y conectados, jugadores no listos quedan fuera (tests unitarios).
+- [x] Integración por sockets con `FakeExtractor`: subir → `extracting` → `ready` difundido a la TV y `player:tracks` solo al dueño; validaciones de `INVALID_UPLOAD`.
+- [x] `ClaudeExtractor` arma el request correcto y mapea la respuesta (test con el cliente de Anthropic mockeado); errores de API → `error`.
+- [x] El estado difundido nunca incluye canciones ni tokens.
+- [x] Ninguna ruta de código escribe imágenes a disco ni las loguea (revisión + test que espía `console`).
+- [x] Escenario `capturas` en `npm run playtest`: 3 celulares suben capturas (uno inválido y luego reintenta), la TV ve los estados y empieza.
+- [ ] Eval con la API real sobre los fixtures cumple la meta. *(pendiente: faltan fixtures reales y credencial)*
+- [ ] Prueba manual: subir tu captura real desde tu celular. *(pendiente)*
 
 ## Fuera de alcance
 Modos de juego, audio Deezer, matching de canciones entre jugadores (fase 5), pulido visual, deploy.
