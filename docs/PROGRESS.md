@@ -1,14 +1,14 @@
 # Progreso
 
 ## Estado actual
-- **Fase 2 — Sala en tiempo real: implementada** (2026-10-31), tests verdes. **Falta la prueba manual con celulares** (pasos en el spec 02) antes de taggear `fase-2`.
-- **Próximo paso**: prueba manual de fase 2 → tag `fase-2` → escribir spec 03 (extracción de capturas). `GAME_DESIGN.md` ya resolvió "mínimo 10 canciones" y "captura inválida → no puede estar listo" (aplica a fase 3).
+- **Fase 2 — Sala en tiempo real: completa** (2026-10-31), tag `fase-2`.
+- **Próximo paso**: escribir spec 03 (extracción de capturas). `GAME_DESIGN.md` ya resolvió "mínimo 10 canciones" y "captura inválida → no puede estar listo" (aplica a fase 3).
 
 ## Fases
 | # | Fase | Estado |
 |---|---|---|
 | 1 | Scaffolding, CLAUDE.md, GAME_DESIGN.md, hook de verificación | ✅ |
-| 2 | Sala en tiempo real con datos falsos | implementada, falta prueba manual |
+| 2 | Sala en tiempo real con datos falsos | ✅ |
 | 3 | Extracción de capturas (Claude vision) | — |
 | 4 | Modo "¿De quién es?" + audio Deezer | — |
 | 5 | Modo "¿Cuántos la tienen?" + matching | — |
@@ -40,3 +40,5 @@
 - Smoke test manual por script contra `npm run dev` (vía proxy de Vite): crear, 3 joins, start → OK.
 - **WSL2**: la IP detectada es la de la VM (172.x) y el celular no llega. Para probar con celulares: `LAN_HOST=<IP-WiFi-de-Windows> npm run dev` y además exponer el puerto 5173 de WSL a la LAN (modo de red `mirrored` en `.wslconfig`, o `netsh interface portproxy` + regla de firewall).
 - Configurado `networkingMode=mirrored` en `C:\Users\USUARIO\.wslconfig` (2026-10-31) + regla de Hyper-V firewall para TCP 5173. Con mirrored, WSL ve las interfaces reales de Windows; si la IP detectada no es la del WiFi (Ethernet, VPN, adaptadores virtuales), usar `LAN_HOST`.
+- Prueba manual: el usuario probó con su celular por WiFi (QR → unirse → lobby), todo OK. Al no tener más celulares, el resto del flujo se probó con Playwright: TV + 3 "celulares" (contextos iPhone con `localStorage` separado), 15/15 checks del spec 02 OK. Capturas en `test-results/playtest/`.
+- **Playwright en WSL**: el Chromium de Playwright no arranca porque le faltan librerías de sistema (`libnspr4`) y `npx playwright install-deps` necesita sudo con terminal. Alternativa usada sin sudo: lanzar el Chrome de Windows headless con `--remote-debugging-port=9222` y `chromium.connectOverCDP("http://localhost:9222")` (funciona gracias al modo mirrored). Para usar el Chromium propio: correr `sudo npx playwright install-deps chromium` en una terminal.
