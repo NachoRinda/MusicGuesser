@@ -23,6 +23,7 @@ Principios de producto (no negociables, ver `docs/GAME_DESIGN.md`):
 - `npm run verify` — typecheck + lint + tests (definición de "verde")
 - `npm test` / `npm run test:watch` — vitest
 - `npm run build` — build del cliente
+- `npm run playtest [-- <escenario>]` — prueba end-to-end con Playwright: TV + varios celulares (`scripts/playtest.mjs`). Levanta el dev server si hace falta. El usuario no tiene varios celulares: **cada fase con UI agrega su escenario** y lo corre antes de cerrarse. No forma parte de `verify`.
 
 ## Estructura
 - `packages/shared` — tipos y contratos compartidos (eventos de socket, `Track`, `Player`…). Todo tipo que cruce cliente↔servidor vive acá.

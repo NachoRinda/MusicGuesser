@@ -2,6 +2,7 @@
 
 ## Estado actual
 - **Fase 2 — Sala en tiempo real: completa** (2026-10-31), tag `fase-2`.
+- **Playtest automatizado**: `npm run playtest` (escenario `sala` de fase 2). Cada fase nueva con UI agrega su escenario.
 - **Próximo paso**: escribir spec 03 (extracción de capturas). `GAME_DESIGN.md` ya resolvió "mínimo 10 canciones" y "captura inválida → no puede estar listo" (aplica a fase 3).
 
 ## Fases
@@ -42,3 +43,4 @@
 - Configurado `networkingMode=mirrored` en `C:\Users\USUARIO\.wslconfig` (2026-10-31) + regla de Hyper-V firewall para TCP 5173. Con mirrored, WSL ve las interfaces reales de Windows; si la IP detectada no es la del WiFi (Ethernet, VPN, adaptadores virtuales), usar `LAN_HOST`.
 - Prueba manual: el usuario probó con su celular por WiFi (QR → unirse → lobby), todo OK. Al no tener más celulares, el resto del flujo se probó con Playwright: TV + 3 "celulares" (contextos iPhone con `localStorage` separado), 15/15 checks del spec 02 OK. Capturas en `test-results/playtest/`.
 - **Playwright en WSL**: el Chromium de Playwright no arranca porque le faltan librerías de sistema (`libnspr4`) y `npx playwright install-deps` necesita sudo con terminal. Alternativa usada sin sudo: lanzar el Chrome de Windows headless con `--remote-debugging-port=9222` y `chromium.connectOverCDP("http://localhost:9222")` (funciona gracias al modo mirrored). Para usar el Chromium propio: correr `sudo npx playwright install-deps chromium` en una terminal.
+- `npm run playtest` (`scripts/playtest.mjs`): escenarios por fase, levanta/apaga el dev server, usa Chromium de Playwright o cae al Chrome de Windows headless vía CDP. ~20 s, 15/15 OK.
