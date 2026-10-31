@@ -2,13 +2,13 @@
 
 ## Estado actual
 - **Fase 1 — Scaffolding: completa** (2026-10-31).
-- **Próximo paso**: revisar y aprobar `docs/specs/02-sala-tiempo-real.md`, luego implementar la fase 2.
+- **Próximo paso**: implementar la fase 2 según `docs/specs/02-sala-tiempo-real.md` (aprobado). Nota: `GAME_DESIGN.md` ya resolvió "mínimo 10 canciones" y "captura inválida → no puede estar listo" (aplica a fase 3) y detalló timer y revelación de rondas (fase 4).
 
 ## Fases
 | # | Fase | Estado |
 |---|---|---|
 | 1 | Scaffolding, CLAUDE.md, GAME_DESIGN.md, hook de verificación | ✅ |
-| 2 | Sala en tiempo real con datos falsos | spec en borrador |
+| 2 | Sala en tiempo real con datos falsos | spec aprobado, por implementar |
 | 3 | Extracción de capturas (Claude vision) | — |
 | 4 | Modo "¿De quién es?" + audio Deezer | — |
 | 5 | Modo "¿Cuántos la tienen?" + matching | — |

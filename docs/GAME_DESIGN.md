@@ -19,7 +19,7 @@ Adivinar qué tan bien conocés a tus amigos a través de la música que realmen
 1. Host crea sala → aparece QR/código.
 2. Jugadores se unen y suben capturas. La TV muestra quién está listo.
 3. Host elige modo y empieza (mínimo 3 jugadores listos — *a confirmar*).
-4. Rondas con timer → revelación → puntajes.
+4. Rondas con timer (los segundos de la música y luego unos 15 segundos para votar) → revelación (se muestra los que realmente la escuchan y a quien voto cada uno) → puntajes.
 5. Ranking final. "Jugar otra vez" mantiene la sala y los jugadores.
 
 ## Fuentes de captura aceptadas
@@ -32,7 +32,7 @@ Adivinar qué tan bien conocés a tus amigos a través de la música que realmen
 ## Modos
 ### 1. ¿De quién es?
 - Suena una canción (o se muestra título/artista si no hay preview).
-- Todos votan a quién pertenece. El dueño no puede votarse a sí mismo.
+- Todos votan a quién pertenece. El dueño no puede votarse a sí mismo, pero si cree que alguien más lo tiene puede votar por alguien más.
 - Si varios jugadores la tienen, cualquiera de ellos es respuesta correcta.
 - Puntaje: *a definir en el spec de la fase 4* (propuesta: +100 acierto, bonus por velocidad; el dueño gana puntos si nadie acierta).
 
@@ -44,6 +44,6 @@ Adivinar qué tan bien conocés a tus amigos a través de la música que realmen
 - Match musical entre pares (% de canciones/artistas en común).
 - ¿Quién es más mainstream?
 
-## Preguntas abiertas
-- Cantidad mínima de canciones por jugador para estar "listo".
-- Qué hacer si un jugador sube una captura que no es una playlist válida.
+## Preguntas abiertas y respuestas cuando se resuelvan
+- Cantidad mínima de canciones por jugador para estar "listo". Respuesta: Al menos 10 canciones.
+- Qué hacer si un jugador sube una captura que no es una playlist válida. Respuesta: Se le avisa que no es válida, no se puede poner en modo "listo" hasta que no se hayan parseado bien las canciones que subió, no puede jugar sin estar "listo".

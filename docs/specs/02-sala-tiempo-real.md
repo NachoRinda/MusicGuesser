@@ -1,6 +1,6 @@
 # Spec 02 — Sala en tiempo real (con datos falsos)
 
-**Estado: borrador** — pendiente de aprobación.
+**Estado: aprobado** (2026-10-31).
 
 ## Objetivo
 Que una TV cree una sala y varios celulares se unan y se vean en un lobby sincronizado en tiempo real, sin todavía capturas ni modos de juego. Al final, el host puede "empezar" y todos pasan a una pantalla placeholder de juego.
