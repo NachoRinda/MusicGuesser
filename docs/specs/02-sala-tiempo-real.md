@@ -1,6 +1,6 @@
 # Spec 02 — Sala en tiempo real (con datos falsos)
 
-**Estado: aprobado** (2026-10-31).
+**Estado: aprobado** (2026-10-31). Implementado 2026-10-31; contrato ampliado al implementar (ver "Cambios al implementar").
 
 ## Objetivo
 Que una TV cree una sala y varios celulares se unan y se vean en un lobby sincronizado en tiempo real, sin todavía capturas ni modos de juego. Al final, el host puede "empezar" y todos pasan a una pantalla placeholder de juego.
@@ -37,8 +37,15 @@ Que una TV cree una sala y varios celulares se unan y se vean en un lobby sincro
 ## Contrato (en `packages/shared`)
 - `RoomState`: `{ code, phase: "lobby" | "playing", players: { id, name, connected }[] }` (sin tokens ni canciones en lo que se difunde a todos).
 - Eventos cliente→server: `host:create`, `host:resume`, `host:start`, `player:join`, `player:resume`.
-- Evento server→clientes: `room:state` (estado completo tras cada cambio), y errores tipados (`ROOM_NOT_FOUND`, `NAME_TAKEN`, `GAME_ALREADY_STARTED`, `INVALID_NAME`, `NOT_ENOUGH_PLAYERS`).
+- Evento server→clientes: `room:state` (estado completo tras cada cambio), y errores tipados (`ROOM_NOT_FOUND`, `NAME_TAKEN`, `GAME_ALREADY_STARTED`, `INVALID_NAME`, `NOT_ENOUGH_PLAYERS`, `INVALID_TOKEN`, `NOT_AUTHORIZED`).
+- Las respuestas a cada evento cliente→server llegan por *ack* de Socket.IO como `Result<T>` (`{ ok: true, ... }` o `{ ok: false, error }`).
+- `GET /api/network` → `{ lanHost }` para armar el QR.
 - Lógica de sala como módulo puro (`RoomStore`) separado de Socket.IO, para testearla sin red.
+
+## Cambios al implementar
+- `INVALID_TOKEN`: `host:resume`/`player:resume` con token desconocido o de otra sala. El cliente lo usa para "tratar como nuevo" (host crea sala nueva; jugador vuelve a pedir nombre).
+- `NOT_AUTHORIZED`: `host:start` desde un socket que no es el host de la sala.
+- IP de red local: se detecta la primera IPv4 no interna; la variable de entorno `LAN_HOST` la reemplaza (necesario bajo WSL2).
 
 ## Casos borde
 - Dos celulares con el mismo nombre en simultáneo → solo uno entra.
@@ -47,16 +54,18 @@ Que una TV cree una sala y varios celulares se unan y se vean en un lobby sincro
 - Token inválido o de otra sala → se trata como jugador nuevo.
 
 ## Criterios de aceptación
-- [ ] Códigos de 4 letras, del alfabeto definido y únicos entre salas activas.
-- [ ] 3 celulares se unen y la TV los muestra en < 1 s.
-- [ ] Nombre duplicado y sala inexistente muestran el error correspondiente.
-- [ ] Recargar un celular o la TV conserva la identidad.
-- [ ] "Empezar" deshabilitado con < 3 jugadores; con 3 pasa a todos a `playing`.
-- [ ] Unirse con nombre nuevo durante `playing` es rechazado.
-- [ ] Sala sin host por 30 min se elimina (test con reloj simulado).
-- [ ] El estado difundido nunca incluye tokens.
+- [x] Códigos de 4 letras, del alfabeto definido y únicos entre salas activas.
+- [x] 3 celulares se unen y la TV los muestra en < 1 s.
+- [x] Nombre duplicado y sala inexistente muestran el error correspondiente.
+- [x] Recargar un celular o la TV conserva la identidad.
+- [x] "Empezar" deshabilitado con < 3 jugadores; con 3 pasa a todos a `playing`.
+- [x] Unirse con nombre nuevo durante `playing` es rechazado.
+- [x] Sala sin host por 30 min se elimina (test con reloj simulado).
+- [x] El estado difundido nunca incluye tokens.
 
 ## Tests
+> Criterios marcados = cubiertos por tests automáticos. La UI (recarga real del navegador, QR desde el celular) queda para la prueba manual.
+
 - **Unit (`RoomStore`)**: generación de códigos, unir/nombres/errores, reconexión por token, transición de fase, TTL con fake timers, que `RoomState` no filtre tokens.
 - **Integración (socket.io-client + server en puerto 0)**: host + 3 jugadores, desconexión/reconexión, start.
 - **Manual (vos, ~5 min)**:

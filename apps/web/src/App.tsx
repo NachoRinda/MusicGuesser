@@ -1,20 +1,19 @@
-import { useEffect, useState } from "react";
-import type { HealthResponse } from "@mg/shared";
+import { HostPage } from "./pages/HostPage.js";
+import { PlayPage } from "./pages/PlayPage.js";
+import { navigate, usePathname } from "./router.js";
 
 export function App() {
-  const [health, setHealth] = useState<HealthResponse["status"] | "error" | "loading">("loading");
+  const path = usePathname();
 
-  useEffect(() => {
-    fetch("/health")
-      .then((res) => res.json() as Promise<HealthResponse>)
-      .then((body) => setHealth(body.status))
-      .catch(() => setHealth("error"));
-  }, []);
+  if (path === "/host") return <HostPage />;
+  const play = /^\/play(?:\/([^/]+))?\/?$/.exec(path);
+  if (play) return <PlayPage key={play[1] ?? ""} code={play[1]?.toUpperCase()} />;
 
   return (
-    <main>
+    <main className="center">
       <h1>MusicGuesser</h1>
-      <p>Servidor: {health}</p>
+      <button onClick={() => navigate("/host")}>Crear sala (TV)</button>
+      <button onClick={() => navigate("/play")}>Unirme (celular)</button>
     </main>
   );
 }
