@@ -1,4 +1,5 @@
 /** Room contract shared by the server and both clients (TV and phones). */
+import type { PlayerStatus, PlayerTracks, ScreenshotUpload } from "./extraction.js";
 
 export type RoomPhase = "lobby" | "playing";
 
@@ -7,6 +8,10 @@ export interface PublicPlayer {
   id: string;
   name: string;
   connected: boolean;
+  status: PlayerStatus;
+  trackCount: number;
+  /** Takes part in the current game (was ready when it started). Always false in the lobby. */
+  inGame: boolean;
 }
 
 /** Full room snapshot broadcast as `room:state` after every change. */
@@ -21,7 +26,11 @@ export type RoomErrorCode =
   | "NAME_TAKEN"
   | "GAME_ALREADY_STARTED"
   | "INVALID_NAME"
-  | "NOT_ENOUGH_PLAYERS"
+  | "NOT_ENOUGH_READY_PLAYERS"
+  /** A previous upload from this player is still being read. */
+  | "EXTRACTION_IN_PROGRESS"
+  /** 0 or too many images, unsupported type or too big. */
+  | "INVALID_UPLOAD"
   /** Resume token unknown or from another room: the client should start over (create / join as new). */
   | "INVALID_TOKEN"
   /** Action sent from a socket that isn't the room's host / a player. */
@@ -46,10 +55,14 @@ export interface ClientToServerEvents {
     req: { code: string; playerToken: string },
     ack: (res: Result<PlayerSession>) => void,
   ) => void;
+  /** Acks as soon as the upload is accepted; the result arrives later via `room:state` and `player:tracks`. */
+  "player:uploadScreenshots": (req: { images: ScreenshotUpload[] }, ack: (res: Result<object>) => void) => void;
 }
 
 export interface ServerToClientEvents {
   "room:state": (state: RoomState) => void;
+  /** Only to the player's own sockets: after an extraction finishes and on (re)join. */
+  "player:tracks": (tracks: PlayerTracks) => void;
 }
 
 /** `GET /api/network`: lets the TV build a QR that phones on the LAN can open. */
@@ -63,7 +76,9 @@ export const ROOM_ERROR_MESSAGES: Record<RoomErrorCode, string> = {
   NAME_TAKEN: "Ese nombre ya está en uso en esta sala",
   GAME_ALREADY_STARTED: "La partida ya empezó",
   INVALID_NAME: "El nombre debe tener entre 1 y 20 caracteres",
-  NOT_ENOUGH_PLAYERS: `Se necesitan al menos ${MIN_PLAYERS_TO_START} jugadores conectados`,
+  NOT_ENOUGH_READY_PLAYERS: `Se necesitan al menos ${MIN_PLAYERS_TO_START} jugadores conectados y listos`,
+  EXTRACTION_IN_PROGRESS: "Todavía estamos leyendo tu captura anterior",
+  INVALID_UPLOAD: "Subí 1 o 2 imágenes (JPG, PNG o WebP)",
   INVALID_TOKEN: "La sesión expiró",
   NOT_AUTHORIZED: "No tenés permiso para hacer eso",
 };

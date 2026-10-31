@@ -1,9 +1,10 @@
 import type { AddressInfo } from "node:net";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createAppServer } from "./app.js";
+import { FakeExtractor } from "./extraction/FakeExtractor.js";
 
 describe("app server", () => {
-  const { httpServer, io } = createAppServer();
+  const { httpServer, io } = createAppServer({ extractor: new FakeExtractor() });
   let baseUrl = "";
 
   beforeAll(async () => {

@@ -1,6 +1,6 @@
 import type { Track } from "./types.js";
 
-/** Fixed pool of fake tracks handed to players until screenshot extraction exists (phase 3). */
+/** Fixed pool of fake tracks: used by the FakeExtractor (tests, playtest, dev without API key). */
 export const FAKE_TRACK_POOL: readonly Track[] = [
   { title: "Blinding Lights", artist: "The Weeknd" },
   { title: "Bohemian Rhapsody", artist: "Queen" },
@@ -33,5 +33,3 @@ export const FAKE_TRACK_POOL: readonly Track[] = [
   { title: "Seven Nation Army", artist: "The White Stripes" },
   { title: "Gasolina", artist: "Daddy Yankee" },
 ];
-
-export const FAKE_TRACKS_PER_PLAYER = 10;

@@ -1,19 +1,20 @@
 import { randomUUID } from "node:crypto";
 import {
-  FAKE_TRACK_POOL,
-  FAKE_TRACKS_PER_PLAYER,
   MAX_NAME_LENGTH,
   MIN_PLAYERS_TO_START,
   ROOM_CODE_ALPHABET,
   ROOM_CODE_LENGTH,
+  type ExtractionProblem,
   type HostSession,
   type Player,
   type PlayerSession,
+  type PlayerStatus,
+  type PlayerTracks,
   type Result,
   type RoomPhase,
   type RoomState,
-  type Track,
 } from "@mg/shared";
+import type { ExtractionOutcome } from "../extraction/evaluate.js";
 
 /** A room is deleted after its host has been away this long. */
 export const HOST_TTL_MS = 30 * 60 * 1000;
@@ -22,7 +23,13 @@ interface StoredPlayer extends Player {
   token: string;
   /** Open sockets for this player; a reload briefly overlaps the old and new socket. */
   connections: number;
+  status: PlayerStatus;
+  problem?: ExtractionProblem;
+  inGame: boolean;
 }
+
+/** What the socket layer reports when an extraction ends: an evaluated outcome or a technical failure. */
+export type ExtractionResult = ExtractionOutcome | { status: "error" };
 
 interface Room {
   code: string;
@@ -38,6 +45,7 @@ export interface RoomStoreOptions {
   now?: () => number;
   random?: () => number;
 }
+
 
 /** In-memory room state, independent of Socket.IO so it can be tested without a network. */
 export class RoomStore {
@@ -98,9 +106,11 @@ export class RoomStore {
     const player: StoredPlayer = {
       id: randomUUID(),
       name,
-      tracks: this.fakeTracks(),
+      tracks: [],
       token: randomUUID(),
       connections: 0,
+      status: "noTracks",
+      inGame: false,
     };
     room.players.push(player);
     return { ok: true, code: room.code, playerId: player.id, playerToken: player.token };
@@ -128,20 +138,69 @@ export class RoomStore {
     const room = this.room(code);
     if (!room) return { ok: false, error: "ROOM_NOT_FOUND" };
     if (room.phase !== "lobby") return { ok: false, error: "GAME_ALREADY_STARTED" };
-    const connected = room.players.filter((p) => p.connections > 0).length;
-    if (connected < MIN_PLAYERS_TO_START) return { ok: false, error: "NOT_ENOUGH_PLAYERS" };
+    const readyAndConnected = room.players.filter((p) => p.status === "ready" && p.connections > 0).length;
+    if (readyAndConnected < MIN_PLAYERS_TO_START) return { ok: false, error: "NOT_ENOUGH_READY_PLAYERS" };
     room.phase = "playing";
+    // Ready players play even if momentarily disconnected; the rest sit this game out.
+    for (const p of room.players) p.inGame = p.status === "ready";
     return { ok: true };
   }
 
-  /** Public snapshot for broadcasting: no tokens, no tracks. */
+  /** Marks a player as having an upload being read; their previous tracks are discarded. */
+  beginExtraction(code: string, playerId: string): Result<object> {
+    const room = this.room(code);
+    if (!room) return { ok: false, error: "ROOM_NOT_FOUND" };
+    const player = room.players.find((p) => p.id === playerId);
+    if (!player) return { ok: false, error: "NOT_AUTHORIZED" };
+    if (room.phase !== "lobby") return { ok: false, error: "GAME_ALREADY_STARTED" };
+    if (player.status === "extracting") return { ok: false, error: "EXTRACTION_IN_PROGRESS" };
+    player.status = "extracting";
+    player.tracks = [];
+    delete player.problem;
+    return { ok: true };
+  }
+
+  /** Stores the result of an extraction; returns false (and changes nothing) if none was in progress. */
+  finishExtraction(code: string, playerId: string, result: ExtractionResult): boolean {
+    const player = this.findPlayer(code, playerId);
+    if (!player || player.status !== "extracting") return false;
+    player.status = result.status;
+    if (result.status === "error") {
+      player.tracks = [];
+      player.problem = "failed";
+    } else {
+      player.tracks = result.tracks;
+      if (result.status === "invalid") player.problem = result.problem;
+    }
+    return true;
+  }
+
+  /** Private view of a player's own tracks (sent only to that player). */
+  getPlayerTracks(code: string, playerId: string): PlayerTracks | undefined {
+    const player = this.findPlayer(code, playerId);
+    if (!player) return undefined;
+    return {
+      status: player.status,
+      tracks: player.tracks,
+      ...(player.problem && { problem: player.problem }),
+    };
+  }
+
+  /** Public snapshot for broadcasting: no tokens, no tracks (only how many). */
   getState(code: string): RoomState | undefined {
     const room = this.room(code);
     if (!room) return undefined;
     return {
       code: room.code,
       phase: room.phase,
-      players: room.players.map((p) => ({ id: p.id, name: p.name, connected: p.connections > 0 })),
+      players: room.players.map((p) => ({
+        id: p.id,
+        name: p.name,
+        connected: p.connections > 0,
+        status: p.status,
+        trackCount: p.tracks.length,
+        inGame: p.inGame,
+      })),
     };
   }
 
@@ -177,16 +236,6 @@ export class RoomStore {
       for (let i = 0; i < ROOM_CODE_LENGTH; i++) code += ROOM_CODE_ALPHABET[this.randomInt(ROOM_CODE_ALPHABET.length)];
       if (!this.rooms.has(code)) return code;
     }
-  }
-
-  /** Random sample without repetition (partial Fisher–Yates). */
-  private fakeTracks(): Track[] {
-    const pool = [...FAKE_TRACK_POOL];
-    for (let i = 0; i < FAKE_TRACKS_PER_PLAYER; i++) {
-      const j = i + this.randomInt(pool.length - i);
-      [pool[i], pool[j]] = [pool[j]!, pool[i]!];
-    }
-    return pool.slice(0, FAKE_TRACKS_PER_PLAYER);
   }
 
   private randomInt(max: number): number {

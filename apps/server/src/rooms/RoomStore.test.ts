@@ -1,4 +1,4 @@
-import { FAKE_TRACK_POOL, FAKE_TRACKS_PER_PLAYER, ROOM_CODE_ALPHABET, type HostSession } from "@mg/shared";
+import { FAKE_TRACK_POOL, ROOM_CODE_ALPHABET, type HostSession, type Track } from "@mg/shared";
 import { beforeEach, describe, expect, it } from "vitest";
 import { HOST_TTL_MS, RoomStore } from "./RoomStore.js";
 
@@ -27,6 +27,22 @@ describe("RoomStore", () => {
     store.playerConnected(code, session.playerId);
     return session;
   }
+
+  const TEN_TRACKS: Track[] = FAKE_TRACK_POOL.slice(0, 10);
+
+  /** Uploads a screenshot that reads fine, as the socket layer does after extraction. */
+  function makeReady(playerId: string, tracks: Track[] = TEN_TRACKS, code = host.code) {
+    ok(store.beginExtraction(code, playerId));
+    store.finishExtraction(code, playerId, { status: "ready", tracks });
+  }
+
+  function joinReady(name: string) {
+    const session = joinConnected(name);
+    makeReady(session.playerId);
+    return session;
+  }
+
+  const lobbyPlayer = { connected: true, status: "noTracks", trackCount: 0, inGame: false };
 
   describe("room codes", () => {
     it("are 4 letters from the unambiguous alphabet", () => {
@@ -61,7 +77,7 @@ describe("RoomStore", () => {
       expect(store.getState(host.code)).toEqual({
         code: host.code,
         phase: "lobby",
-        players: [{ id: playerId, name: "Ana", connected: true }],
+        players: [{ id: playerId, name: "Ana", ...lobbyPlayer }],
       });
     });
 
@@ -93,19 +109,17 @@ describe("RoomStore", () => {
     });
 
     it("rejects new players once the game started", () => {
-      joinConnected("A");
-      joinConnected("B");
-      joinConnected("C");
+      joinReady("A");
+      joinReady("B");
+      joinReady("C");
       ok(store.start(host.code));
       expect(store.join(host.code, "D")).toEqual({ ok: false, error: "GAME_ALREADY_STARTED" });
     });
 
-    it("gives each player 10 distinct fake tracks from the fixed pool", () => {
+    it("starts with no tracks", () => {
       const { playerId } = joinConnected("Ana");
-      const tracks = store.getPlayer(host.code, playerId)!.tracks;
-      expect(tracks).toHaveLength(FAKE_TRACKS_PER_PLAYER);
-      expect(new Set(tracks.map((t) => t.title)).size).toBe(FAKE_TRACKS_PER_PLAYER);
-      for (const t of tracks) expect(FAKE_TRACK_POOL).toContainEqual(t);
+      expect(store.getPlayer(host.code, playerId)!.tracks).toEqual([]);
+      expect(store.getPlayerTracks(host.code, playerId)).toEqual({ status: "noTracks", tracks: [] });
     });
   });
 
@@ -118,13 +132,13 @@ describe("RoomStore", () => {
       const resumed = ok(store.resumePlayer(host.code, session.playerToken));
       expect(resumed).toEqual(session);
       store.playerConnected(host.code, resumed.playerId);
-      expect(store.getState(host.code)!.players).toEqual([{ id: session.playerId, name: "Ana", connected: true }]);
+      expect(store.getState(host.code)!.players).toEqual([{ id: session.playerId, name: "Ana", ...lobbyPlayer }]);
     });
 
     it("lets an existing player back in after the game started", () => {
-      const a = joinConnected("A");
-      joinConnected("B");
-      joinConnected("C");
+      const a = joinReady("A");
+      joinReady("B");
+      joinReady("C");
       ok(store.start(host.code));
       store.playerDisconnected(host.code, a.playerId);
       expect(store.resumePlayer(host.code, a.playerToken).ok).toBe(true);
@@ -163,12 +177,12 @@ describe("RoomStore", () => {
   });
 
   describe("start", () => {
-    it("needs at least 3 connected players", () => {
-      joinConnected("A");
-      joinConnected("B");
-      const c = joinConnected("C");
+    it("needs at least 3 connected and ready players", () => {
+      joinReady("A");
+      joinReady("B");
+      const c = joinReady("C");
       store.playerDisconnected(host.code, c.playerId);
-      expect(store.start(host.code)).toEqual({ ok: false, error: "NOT_ENOUGH_PLAYERS" });
+      expect(store.start(host.code)).toEqual({ ok: false, error: "NOT_ENOUGH_READY_PLAYERS" });
       expect(store.getState(host.code)!.phase).toBe("lobby");
 
       store.playerConnected(host.code, c.playerId);
@@ -176,12 +190,104 @@ describe("RoomStore", () => {
       expect(store.getState(host.code)!.phase).toBe("playing");
     });
 
-    it("rejects starting twice", () => {
-      joinConnected("A");
-      joinConnected("B");
+    it("does not count connected players that are not ready", () => {
+      joinReady("A");
+      joinReady("B");
       joinConnected("C");
+      const d = joinConnected("D");
+      ok(store.beginExtraction(host.code, d.playerId));
+      store.finishExtraction(host.code, d.playerId, { status: "invalid", problem: "tooFew", tracks: TEN_TRACKS.slice(0, 5) });
+      expect(store.start(host.code)).toEqual({ ok: false, error: "NOT_ENOUGH_READY_PLAYERS" });
+    });
+
+    it("leaves players that are not ready out of the game (ready but disconnected ones stay in)", () => {
+      joinReady("A");
+      joinReady("B");
+      joinReady("C");
+      const late = joinReady("Late");
+      store.playerDisconnected(host.code, late.playerId);
+      joinConnected("NoTracks");
+      ok(store.start(host.code));
+      const inGame = Object.fromEntries(store.getState(host.code)!.players.map((p) => [p.name, p.inGame]));
+      expect(inGame).toEqual({ A: true, B: true, C: true, Late: true, NoTracks: false });
+    });
+
+    it("rejects starting twice", () => {
+      joinReady("A");
+      joinReady("B");
+      joinReady("C");
       ok(store.start(host.code));
       expect(store.start(host.code)).toEqual({ ok: false, error: "GAME_ALREADY_STARTED" });
+    });
+  });
+
+  describe("screenshots", () => {
+    const status = (playerId: string) => store.getState(host.code)!.players.find((p) => p.id === playerId)!;
+
+    it("goes noTracks → extracting → ready, with the track count public and the tracks private", () => {
+      const { playerId } = joinConnected("Ana");
+      expect(store.beginExtraction(host.code, playerId)).toEqual({ ok: true });
+      expect(status(playerId)).toMatchObject({ status: "extracting", trackCount: 0 });
+
+      store.finishExtraction(host.code, playerId, { status: "ready", tracks: TEN_TRACKS });
+      expect(status(playerId)).toMatchObject({ status: "ready", trackCount: 10 });
+      expect(store.getPlayerTracks(host.code, playerId)).toEqual({ status: "ready", tracks: TEN_TRACKS });
+      expect(store.getPlayer(host.code, playerId)!.tracks).toEqual(TEN_TRACKS);
+    });
+
+    it("keeps what was read and the problem when invalid", () => {
+      const { playerId } = joinConnected("Ana");
+      ok(store.beginExtraction(host.code, playerId));
+      store.finishExtraction(host.code, playerId, { status: "invalid", problem: "tooFew", tracks: TEN_TRACKS.slice(0, 4) });
+      expect(status(playerId)).toMatchObject({ status: "invalid", trackCount: 4 });
+      expect(store.getPlayerTracks(host.code, playerId)).toEqual({
+        status: "invalid",
+        problem: "tooFew",
+        tracks: TEN_TRACKS.slice(0, 4),
+      });
+    });
+
+    it("records a technical failure as error with no tracks", () => {
+      const { playerId } = joinConnected("Ana");
+      ok(store.beginExtraction(host.code, playerId));
+      store.finishExtraction(host.code, playerId, { status: "error" });
+      expect(store.getPlayerTracks(host.code, playerId)).toEqual({ status: "error", problem: "failed", tracks: [] });
+    });
+
+    it("replaces all tracks on retry (never mixes uploads)", () => {
+      const { playerId } = joinConnected("Ana");
+      makeReady(playerId);
+      const other = FAKE_TRACK_POOL.slice(10, 22);
+      ok(store.beginExtraction(host.code, playerId));
+      expect(status(playerId)).toMatchObject({ status: "extracting", trackCount: 0 });
+      store.finishExtraction(host.code, playerId, { status: "ready", tracks: other });
+      expect(store.getPlayer(host.code, playerId)!.tracks).toEqual(other);
+    });
+
+    it("rejects a second upload while one is being read", () => {
+      const { playerId } = joinConnected("Ana");
+      ok(store.beginExtraction(host.code, playerId));
+      expect(store.beginExtraction(host.code, playerId)).toEqual({ ok: false, error: "EXTRACTION_IN_PROGRESS" });
+    });
+
+    it("rejects uploads once the game started", () => {
+      joinReady("A");
+      joinReady("B");
+      joinReady("C");
+      const d = joinConnected("D");
+      ok(store.start(host.code));
+      expect(store.beginExtraction(host.code, d.playerId)).toEqual({ ok: false, error: "GAME_ALREADY_STARTED" });
+    });
+
+    it("rejects uploads for unknown rooms or players", () => {
+      expect(store.beginExtraction("ZZZZ", "x")).toEqual({ ok: false, error: "ROOM_NOT_FOUND" });
+      expect(store.beginExtraction(host.code, "x")).toEqual({ ok: false, error: "NOT_AUTHORIZED" });
+    });
+
+    it("ignores a result for a player that is not extracting", () => {
+      const { playerId } = joinConnected("Ana");
+      expect(store.finishExtraction(host.code, playerId, { status: "ready", tracks: TEN_TRACKS })).toBe(false);
+      expect(status(playerId).status).toBe("noTracks");
     });
   });
 
@@ -219,12 +325,19 @@ describe("RoomStore", () => {
 
   describe("broadcast state", () => {
     it("never includes tokens or tracks", () => {
-      const a = joinConnected("Ana");
+      const a = joinReady("Ana");
       const json = JSON.stringify(store.getState(host.code));
       expect(json).not.toContain(a.playerToken);
       expect(json).not.toContain(host.hostToken);
-      expect(json).not.toContain("tracks");
-      expect(Object.keys(store.getState(host.code)!.players[0]!).sort()).toEqual(["connected", "id", "name"]);
+      for (const t of TEN_TRACKS) expect(json).not.toContain(t.title);
+      expect(Object.keys(store.getState(host.code)!.players[0]!).sort()).toEqual([
+        "connected",
+        "id",
+        "inGame",
+        "name",
+        "status",
+        "trackCount",
+      ]);
     });
   });
 });
