@@ -1,0 +1,69 @@
+/** Room contract shared by the server and both clients (TV and phones). */
+
+export type RoomPhase = "lobby" | "playing";
+
+/** What everyone in the room may see about a player: never tokens nor tracks. */
+export interface PublicPlayer {
+  id: string;
+  name: string;
+  connected: boolean;
+}
+
+/** Full room snapshot broadcast as `room:state` after every change. */
+export interface RoomState {
+  code: string;
+  phase: RoomPhase;
+  players: PublicPlayer[];
+}
+
+export type RoomErrorCode =
+  | "ROOM_NOT_FOUND"
+  | "NAME_TAKEN"
+  | "GAME_ALREADY_STARTED"
+  | "INVALID_NAME"
+  | "NOT_ENOUGH_PLAYERS"
+  /** Resume token unknown or from another room: the client should start over (create / join as new). */
+  | "INVALID_TOKEN"
+  /** Action sent from a socket that isn't the room's host / a player. */
+  | "NOT_AUTHORIZED";
+
+export type Result<T> = ({ ok: true } & T) | { ok: false; error: RoomErrorCode };
+
+export const ROOM_CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ";
+export const ROOM_CODE_LENGTH = 4;
+export const MIN_PLAYERS_TO_START = 3;
+export const MAX_NAME_LENGTH = 20;
+
+export type HostSession = { code: string; hostToken: string };
+export type PlayerSession = { code: string; playerId: string; playerToken: string };
+
+export interface ClientToServerEvents {
+  "host:create": (ack: (res: Result<HostSession>) => void) => void;
+  "host:resume": (req: { hostToken: string }, ack: (res: Result<HostSession>) => void) => void;
+  "host:start": (ack: (res: Result<object>) => void) => void;
+  "player:join": (req: { code: string; name: string }, ack: (res: Result<PlayerSession>) => void) => void;
+  "player:resume": (
+    req: { code: string; playerToken: string },
+    ack: (res: Result<PlayerSession>) => void,
+  ) => void;
+}
+
+export interface ServerToClientEvents {
+  "room:state": (state: RoomState) => void;
+}
+
+/** `GET /api/network`: lets the TV build a QR that phones on the LAN can open. */
+export interface NetworkInfo {
+  lanHost: string | null;
+}
+
+/** Error messages shown in the UI. */
+export const ROOM_ERROR_MESSAGES: Record<RoomErrorCode, string> = {
+  ROOM_NOT_FOUND: "No existe la sala",
+  NAME_TAKEN: "Ese nombre ya está en uso en esta sala",
+  GAME_ALREADY_STARTED: "La partida ya empezó",
+  INVALID_NAME: "El nombre debe tener entre 1 y 20 caracteres",
+  NOT_ENOUGH_PLAYERS: `Se necesitan al menos ${MIN_PLAYERS_TO_START} jugadores conectados`,
+  INVALID_TOKEN: "La sesión expiró",
+  NOT_AUTHORIZED: "No tenés permiso para hacer eso",
+};

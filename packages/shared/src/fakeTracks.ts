@@ -1,0 +1,37 @@
+import type { Track } from "./types.js";
+
+/** Fixed pool of fake tracks handed to players until screenshot extraction exists (phase 3). */
+export const FAKE_TRACK_POOL: readonly Track[] = [
+  { title: "Blinding Lights", artist: "The Weeknd" },
+  { title: "Bohemian Rhapsody", artist: "Queen" },
+  { title: "Tusa", artist: "Karol G" },
+  { title: "Despechá", artist: "Rosalía" },
+  { title: "Bzrp Music Sessions, Vol. 53", artist: "Bizarrap & Shakira" },
+  { title: "Flowers", artist: "Miley Cyrus" },
+  { title: "Tití Me Preguntó", artist: "Bad Bunny" },
+  { title: "As It Was", artist: "Harry Styles" },
+  { title: "De Música Ligera", artist: "Soda Stereo" },
+  { title: "Persiana Americana", artist: "Soda Stereo" },
+  { title: "Levitating", artist: "Dua Lipa" },
+  { title: "Shape of You", artist: "Ed Sheeran" },
+  { title: "Quevedo: Bzrp Music Sessions, Vol. 52", artist: "Bizarrap & Quevedo" },
+  { title: "Mr. Brightside", artist: "The Killers" },
+  { title: "Smells Like Teen Spirit", artist: "Nirvana" },
+  { title: "Ella Baila Sola", artist: "Eslabon Armado & Peso Pluma" },
+  { title: "Anti-Hero", artist: "Taylor Swift" },
+  { title: "Cruel Summer", artist: "Taylor Swift" },
+  { title: "Me Porto Bonito", artist: "Bad Bunny & Chencho Corleone" },
+  { title: "Rich Flex", artist: "Drake & 21 Savage" },
+  { title: "Kill Bill", artist: "SZA" },
+  { title: "La Bachata", artist: "Manuel Turizo" },
+  { title: "Starboy", artist: "The Weeknd & Daft Punk" },
+  { title: "Lamento Boliviano", artist: "Enanitos Verdes" },
+  { title: "Cupido", artist: "Tini" },
+  { title: "Espresso", artist: "Sabrina Carpenter" },
+  { title: "Die With A Smile", artist: "Lady Gaga & Bruno Mars" },
+  { title: "Get Lucky", artist: "Daft Punk" },
+  { title: "Seven Nation Army", artist: "The White Stripes" },
+  { title: "Gasolina", artist: "Daddy Yankee" },
+];
+
+export const FAKE_TRACKS_PER_PLAYER = 10;
