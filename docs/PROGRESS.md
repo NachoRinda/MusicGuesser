@@ -4,7 +4,7 @@
 - **Fase 4 — "¿De quién es?" + audio Deezer: completa** (2026-11-01), tag `fase-4`. Tests 138, playtest 40/40, prueba manual del usuario OK (celular + audio real).
 - Fase 3 — Extracción de capturas: completa (2026-10-31), tag `fase-3`.
 - **Playtest automatizado**: `npm run playtest` (escenarios `sala`, `capturas` y `de-quien-es`). Usa `MG_EXTRACTOR=fake` y `MG_CATALOG=fake`.
-- **Próximo paso**: que el usuario pruebe los ajustes de diseño de la fase 4; después spec 05. La música de tensión queda pendiente (ver "Feedback pendiente"). Pendiente opcional: un fixture de Apple Music.
+- **Próximo paso**: que el usuario pruebe los ajustes de diseño de la fase 4; después spec 05 (pulido y deploy). La música de tensión queda pendiente (ver "Feedback pendiente"). Pendiente opcional: un fixture de Apple Music.
 
 ## Fases
 | # | Fase | Estado |
@@ -13,8 +13,11 @@
 | 2 | Sala en tiempo real con datos falsos | ✅ |
 | 3 | Extracción de capturas (Claude vision) | ✅ |
 | 4 | Modo "¿De quién es?" + audio Deezer | ✅ |
-| 5 | Modo "¿Cuántos la tienen?" + matching | — |
-| 6 | Pulido y deploy | — |
+| 5 | Pulido y deploy | — |
+
+## Backlog (sin fase asignada)
+- Modo **"¿Cuántos la tienen?"** — descripción en `docs/GAME_DESIGN.md` → "Backlog de modos".
+- **Matching difuso** de canciones entre jugadores (hoy se compara con `trackKey`: sin mayúsculas, acentos ni espacios extra). Iba junto con ese modo; también mejoraría la detección de dueños en "¿De quién es?".
 
 ## Feedback pendiente (prueba manual fase 4, 2026-11-01)
 - Música de tensión de uso libre cuando termina el preview de Deezer (30 s), para que no quede en silencio. A decidir: pista real con licencia (fase 6) o loop generado con Web Audio.
@@ -31,6 +34,7 @@
 - La API de Anthropic es aparte de Claude Pro: el usuario cargó US$5 de crédito prepago (2026-10-31); la key está en `.env` (no se commitea).
 - **Partida "¿De quién es?"** (spec 04, cambios del usuario al aprobar): no se excluye ninguna canción (aunque la tengan todos); la revelación tiene 3 etapas de 10 s (dueños → votos → ranking). Puntaje: acierto 100 + hasta 50 por velocidad; dueño no descubierto +100.
 - **Deezer**: las canciones que no están en Deezer se descartan al tocar "Empezar" (la TV muestra "Preparando canciones…", ~1,5 s para 15). Si la búsqueda falla por red, esa canción se juega sin audio. Las URLs de preview vencen a los ~15 min → la de la ronda siguiente se renueva por id de Deezer mientras suena la actual.
+- **El modo "¿Cuántos la tienen?" sale del plan de fases** (2026-11-01, decisión del usuario): queda en el backlog junto con el matching difuso. "Pulido y deploy" pasa a ser la fase 5.
 - Router propio mínimo (`apps/web/src/router.ts`) en vez de react-router: solo hay 3 rutas.
 
 ## Bitácora

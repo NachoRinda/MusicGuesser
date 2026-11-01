@@ -36,11 +36,10 @@ Adivinar qué tan bien conocés a tus amigos a través de la música que realmen
 - Si varios jugadores la tienen, cualquiera de ellos es respuesta correcta.
 - Puntaje: *a definir en el spec de la fase 4* (propuesta: +100 acierto, bonus por velocidad; el dueño gana puntos si nadie acierta).
 
-### 2. ¿Cuántos la tienen?
-- Se muestra una canción presente en al menos un jugador; cada uno adivina cuántos de la sala la tienen.
-- Puntaje: *a definir en el spec de la fase 5*.
+## Backlog de modos
+> Ideas guardadas para el futuro. **No son fases planificadas**: para implementar una hay que sumarla como fase en `docs/PROGRESS.md` y escribir su spec.
 
-### Ideas futuras
+- **¿Cuántos la tienen?** — se muestra una canción presente en al menos un jugador; cada uno adivina cuántos de la sala la tienen. Puntaje sin definir. (Era la fase 5; pasó al backlog el 2026-11-01.)
 - Match musical entre pares (% de canciones/artistas en común).
 - ¿Quién es más mainstream?
 
