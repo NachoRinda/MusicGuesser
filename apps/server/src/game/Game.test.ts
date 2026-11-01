@@ -141,12 +141,26 @@ describe("Game", () => {
     expect(game.view().stage).toBe("votes");
   });
 
-  it("stores the media found for a round", () => {
-    const { game } = setup();
-    game.setMedia(0, { previewUrl: "https://p/1.mp3", coverUrl: "https://c/1.jpg" });
-    game.setMedia(1, { previewUrl: "https://p/2.mp3", coverUrl: null });
-    expect(game.view().track).toMatchObject({ previewUrl: "https://p/1.mp3", coverUrl: "https://c/1.jpg" });
+  it("starts with the media found when preparing, and can refresh a round's preview by its ref", () => {
+    let t = 0;
+    const game = new Game({
+      rounds: [
+        { ...rounds[0]!, media: { ref: "11", previewUrl: "https://p/old.mp3", coverUrl: "https://c/1.jpg" } },
+        rounds[1]!,
+      ],
+      players: ["a", "b", "c"],
+      now: () => t,
+      questionMs: QUESTION,
+      revealStageMs: STAGE,
+    });
+    expect(game.view().track).toMatchObject({ previewUrl: "https://p/old.mp3", coverUrl: "https://c/1.jpg" });
+    expect(game.mediaRef(0)).toBe("11");
+    expect(game.mediaRef(1)).toBeUndefined();
+    game.setPreview(0, "https://p/fresh.mp3");
+    expect(game.view().track).toMatchObject({ previewUrl: "https://p/fresh.mp3", coverUrl: "https://c/1.jpg" });
+    game.setPreview(1, "https://p/none.mp3"); // a round without audio stays without
     for (let i = 0; i < 4; i++) game.advance();
-    expect(game.view().track.previewUrl).toBe("https://p/2.mp3");
+    expect(game.view().track.previewUrl).toBeNull();
+    t++;
   });
 });

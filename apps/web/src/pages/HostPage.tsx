@@ -78,6 +78,7 @@ export function HostPage() {
                 key={n}
                 className={room.settings.rounds === n ? "selected" : ""}
                 aria-pressed={room.settings.rounds === n}
+                disabled={room.starting}
                 onClick={() => void setRounds(n)}
               >
                 {n}
@@ -85,8 +86,8 @@ export function HostPage() {
             ))}
           </p>
         </div>
-        <button onClick={start} disabled={ready < MIN_PLAYERS_TO_START}>
-          Empezar
+        <button onClick={start} disabled={ready < MIN_PLAYERS_TO_START || room.starting}>
+          {room.starting ? "Preparando canciones…" : "Empezar"}
         </button>
         {ready < MIN_PLAYERS_TO_START && (
           <p className="muted">

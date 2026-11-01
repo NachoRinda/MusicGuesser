@@ -30,7 +30,7 @@
 - Extracción con **`claude-haiku-5-5`** (igualó a Opus 5.5 en el eval a ~1/35 del costo: ~US$0,0004 por captura, así que US$5 alcanzan para miles de envíos), salida estructurada (JSON schema), `effort: low`. Un request por envío (1–2 imágenes). Opus con `MG_EXTRACTION_MODEL=claude-opus-5-5`.
 - La API de Anthropic es aparte de Claude Pro: el usuario cargó US$5 de crédito prepago (2026-10-31); la key está en `.env` (no se commitea).
 - **Partida "¿De quién es?"** (spec 04, cambios del usuario al aprobar): no se excluye ninguna canción (aunque la tengan todos); la revelación tiene 3 etapas de 10 s (dueños → votos → ranking). Puntaje: acierto 100 + hasta 50 por velocidad; dueño no descubierto +100.
-- **Deezer**: las URLs de preview vencen a los ~15 min → se buscan por ronda (la actual y la siguiente), nunca se cachean. La ronda no espera la búsqueda.
+- **Deezer**: las canciones que no están en Deezer se descartan al tocar "Empezar" (la TV muestra "Preparando canciones…", ~1,5 s para 15). Si la búsqueda falla por red, esa canción se juega sin audio. Las URLs de preview vencen a los ~15 min → la de la ronda siguiente se renueva por id de Deezer mientras suena la actual.
 - Router propio mínimo (`apps/web/src/router.ts`) en vez de react-router: solo hay 3 rutas.
 
 ## Bitácora
@@ -84,3 +84,8 @@
 - Feedback de la prueba manual, agregado al spec 04 ("Ajustes de diseño…"): cada etapa de revelación con fondo y composición propios (dueños violeta con tarjetas, votos oscuro con tarjetas verde/roja, ranking azul con barras); celular a pantalla completa verde ✓ si sumó puntos en la ronda, rojo ✗ si no; timer por etapa con etiqueta y barra ("Tiempo para votar" / "Siguiente en"), sin contador global.
 - Playtest `de-quien-es` con 4 chequeos nuevos (18/18; 44/44 en total).
 - `npm run playtest` se puede correr junto a un `npm run dev` propio: `PORT` también define el proxy de Vite y `MG_PLAYTEST_URL` cambia la URL (p. ej. server `PORT=3100` + `vite --port 5180`).
+
+### 2026-11-01 — Canciones sin audio
+- Reporte del usuario: 2 rondas sin audio. Diagnóstico contra Deezer real: "Nothin' on You (con Bruno Mars) — B.o.B" no se encontraba porque Deezer exige todas las palabras ("con") → búsquedas de respaldo (completa → artista principal + título limpio → título solo). "Haciendo Nada — Santaferia" sí se encontraba: fue una falla momentánea sin reintento (no había log).
+- Spec 04 actualizado y aprobado: descartar canciones sin audio. `pickPlayableRounds` (reemplaza por otra del mismo jugador, 4 búsquedas en paralelo, falla de red → se juega sin audio), `RoomStore.beginStart/completeStart` (`starting`, `NO_PLAYABLE_TRACKS`), `DeezerCatalog.preview(ref)` vía `/track/{id}`, errores de Deezer con HTTP 200 (cuota) tratados como error, log de cada canción sin preview.
+- Verificado con Deezer real: 15 canciones (2 inventadas) → 13 rondas con audio en 1,5 s; renovación por id OK. Tests 157, playtest 44/44.

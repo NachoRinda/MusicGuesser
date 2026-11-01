@@ -1,6 +1,6 @@
 import type { Track } from "@mg/shared";
 import { trackKey } from "../extraction/evaluate.js";
-import type { MusicCatalog, TrackMedia } from "./MusicCatalog.js";
+import type { LookupResult, MusicCatalog } from "./MusicCatalog.js";
 
 export interface DeezerCatalogOptions {
   fetch?: (url: string, init?: RequestInit) => Promise<Response>;
@@ -8,13 +8,14 @@ export interface DeezerCatalogOptions {
 }
 
 interface DeezerHit {
+  id?: number;
   title?: string;
   preview?: string;
   artist?: { name?: string };
   album?: { cover_medium?: string };
 }
 
-const SEARCH_URL = "https://api.deezer.com/search";
+const API = "https://api.deezer.com";
 
 /**
  * Public Deezer search (no auth). Preview URLs are signed and expire after ~15 min, so they are
@@ -31,9 +32,9 @@ export class DeezerCatalog implements MusicCatalog {
     this.timeoutMs = timeoutMs;
   }
 
-  async lookup(track: Track): Promise<TrackMedia | null> {
+  async lookup(track: Track): Promise<LookupResult> {
     const key = trackKey(track);
-    if (this.notFound.has(key)) return null;
+    if (this.notFound.has(key)) return { status: "notFound" };
     const queries = searchQueries(track);
     for (const q of queries) {
       let hits: DeezerHit[];
@@ -42,25 +43,49 @@ export class DeezerCatalog implements MusicCatalog {
       } catch (err) {
         // Network, HTTP or timeout: maybe temporary, so not remembered; try again next time.
         console.warn(`Deezer: falló la búsqueda de "${track.title}" — "${track.artist}": ${(err as Error).message}`);
-        return null;
+        return { status: "error" };
       }
       const hit = pickHit(hits, track);
-      if (hit) return { previewUrl: hit.preview!, coverUrl: hit.album?.cover_medium || null };
+      if (hit) {
+        return {
+          status: "found",
+          media: { ref: String(hit.id), previewUrl: hit.preview!, coverUrl: hit.album?.cover_medium || null },
+        };
+      }
     }
     this.notFound.add(key);
     console.warn(
       `Deezer: sin preview para "${track.title}" — "${track.artist}" (búsquedas: ${queries.map((q) => `"${q}"`).join(", ")})`,
     );
-    return null;
+    return { status: "notFound" };
+  }
+
+  async preview(ref: string): Promise<string | null> {
+    if (!/^\d+$/.test(ref)) return null;
+    try {
+      const body = await this.get(`${API}/track/${ref}`);
+      const preview = (body as { preview?: unknown }).preview;
+      return typeof preview === "string" && preview.length > 0 ? preview : null;
+    } catch (err) {
+      console.warn(`Deezer: no se pudo renovar el preview ${ref}: ${(err as Error).message}`);
+      return null;
+    }
+  }
+
+  private async get(url: string): Promise<unknown> {
+    const res = await this.fetch(url, { signal: AbortSignal.timeout(this.timeoutMs) });
+    if (!res.ok) throw new Error(`Deezer HTTP ${res.status}`);
+    const body = (await res.json()) as { error?: { message?: string } };
+    // Deezer reports some errors (e.g. quota exceeded) with HTTP 200.
+    if (body && typeof body === "object" && body.error) throw new Error(`Deezer: ${body.error.message ?? "error"}`);
+    return body;
   }
 
   private async search(q: string): Promise<DeezerHit[]> {
-    const url = new URL(SEARCH_URL);
+    const url = new URL(`${API}/search`);
     url.searchParams.set("q", q);
     url.searchParams.set("limit", "10");
-    const res = await this.fetch(url.toString(), { signal: AbortSignal.timeout(this.timeoutMs) });
-    if (!res.ok) throw new Error(`Deezer HTTP ${res.status}`);
-    const body = (await res.json()) as { data?: unknown };
+    const body = (await this.get(url.toString())) as { data?: unknown };
     if (!Array.isArray(body.data)) throw new Error("Deezer: respuesta inesperada");
     return body.data as DeezerHit[];
   }
@@ -93,7 +118,7 @@ function splitArtists(artist: string): string[] {
 
 /** First hit with a preview whose title and artist match; else the first by the same artist. */
 function pickHit(hits: DeezerHit[], track: Track): DeezerHit | undefined {
-  const playable = hits.filter((h) => typeof h.preview === "string" && h.preview.length > 0);
+  const playable = hits.filter((h) => typeof h.preview === "string" && h.preview.length > 0 && h.id !== undefined);
   const byArtist = playable.filter((h) => artistMatches(track.artist, h.artist?.name ?? ""));
   return byArtist.find((h) => titleMatches(track.title, h.title ?? "")) ?? byArtist[0];
 }

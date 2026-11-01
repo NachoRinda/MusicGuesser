@@ -1,13 +1,17 @@
 import { describe, expect, it, vi } from "vitest";
 import { DeezerCatalog } from "./DeezerCatalog.js";
+import type { LookupResult } from "./MusicCatalog.js";
 
 type Hit = { title: string; artist: string; preview?: string; cover?: string };
 const hit = ({ title, artist, preview = `https://cdn/${title}.mp3`, cover = `https://img/${title}.jpg` }: Hit) => ({
+  id: title.length,
   title,
   preview,
   artist: { name: artist },
   album: { cover_medium: cover },
 });
+
+const found = (r: LookupResult | undefined) => (r?.status === "found" ? r.media.previewUrl : null);
 
 function fetchReturning(data: unknown[], status = 200) {
   return vi.fn<(url: string, init?: RequestInit) => Promise<Response>>(
@@ -32,7 +36,10 @@ describe("DeezerCatalog", () => {
     ]);
     const media = await new DeezerCatalog({ fetch }).lookup({ title: "Tití Me Preguntó", artist: "Bad Bunny" });
     // "- Live" is a suffix: the first matching hit wins.
-    expect(media).toEqual({ previewUrl: "https://cdn/live.mp3", coverUrl: "https://img/Titi me pregunto - Live.jpg" });
+    expect(media).toEqual({
+      status: "found",
+      media: { ref: "23", previewUrl: "https://cdn/live.mp3", coverUrl: "https://img/Titi me pregunto - Live.jpg" },
+    });
   });
 
   it("matches cut-off titles and multi-artist credits", async () => {
@@ -41,7 +48,7 @@ describe("DeezerCatalog", () => {
       title: "Bzrp Music Sessions, Vol…",
       artist: "Bizarrap, Shakira",
     });
-    expect(media?.previewUrl).toBe("https://cdn/Bzrp Music Sessions, Vol. 53.mp3");
+    expect(found(media)).toBe("https://cdn/Bzrp Music Sessions, Vol. 53.mp3");
   });
 
   it("falls back to the first hit by the same artist", async () => {
@@ -50,35 +57,37 @@ describe("DeezerCatalog", () => {
       hit({ title: "En vivo en Madrid", artist: "Bad Bunny" }),
     ]);
     const media = await new DeezerCatalog({ fetch }).lookup({ title: "Canción rara", artist: "Bad Bunny" });
-    expect(media?.previewUrl).toBe("https://cdn/En vivo en Madrid.mp3");
+    expect(found(media)).toBe("https://cdn/En vivo en Madrid.mp3");
   });
 
-  it("null when the artist doesn't match, or the hit has no preview", async () => {
+  it("notFound when the artist doesn't match, or the hit has no preview", async () => {
     const none = await new DeezerCatalog({ fetch: fetchReturning([hit({ title: "X", artist: "Otro" })]) }).lookup({
       title: "X",
       artist: "Bad Bunny",
     });
-    expect(none).toBeNull();
+    expect(none).toEqual({ status: "notFound" });
     const noPreview = await new DeezerCatalog({
       fetch: fetchReturning([hit({ title: "X", artist: "Y", preview: "" })]),
     }).lookup({ title: "X", artist: "Y" });
-    expect(noPreview).toBeNull();
+    expect(noPreview).toEqual({ status: "notFound" });
   });
 
-  it("null on HTTP errors, network errors, bad JSON and timeouts", async () => {
+  it("error on HTTP errors, network errors, bad JSON (e.g. Deezer's quota error) and timeouts", async () => {
     const t = { title: "X", artist: "Y" };
-    expect(await new DeezerCatalog({ fetch: fetchReturning([], 500) }).lookup(t)).toBeNull();
+    expect(await new DeezerCatalog({ fetch: fetchReturning([], 500) }).lookup(t)).toEqual({ status: "error" });
     const failing = vi.fn(async () => {
       throw new Error("offline");
     });
-    expect(await new DeezerCatalog({ fetch: failing }).lookup(t)).toBeNull();
+    expect(await new DeezerCatalog({ fetch: failing }).lookup(t)).toEqual({ status: "error" });
     const badJson = vi.fn(async () => new Response("<html>"));
-    expect(await new DeezerCatalog({ fetch: badJson }).lookup(t)).toBeNull();
+    const quota = vi.fn(async () => new Response(JSON.stringify({ error: { code: 4, message: "Quota limit exceeded" } })));
+    expect(await new DeezerCatalog({ fetch: quota }).lookup(t)).toEqual({ status: "error" });
+    expect(await new DeezerCatalog({ fetch: badJson }).lookup(t)).toEqual({ status: "error" });
     const hanging = vi.fn(
       (_url: string, init?: RequestInit) =>
         new Promise<Response>((_, reject) => init?.signal?.addEventListener("abort", () => reject(new Error("aborted")))),
     );
-    expect(await new DeezerCatalog({ fetch: hanging, timeoutMs: 20 }).lookup(t)).toBeNull();
+    expect(await new DeezerCatalog({ fetch: hanging, timeoutMs: 20 }).lookup(t)).toEqual({ status: "error" });
   });
 
   it("remembers tracks that were not found, but never caches preview URLs (they expire)", async () => {
@@ -113,7 +122,7 @@ describe("DeezerCatalog", () => {
       return new Response(JSON.stringify({ data }));
     });
     const media = await new DeezerCatalog({ fetch }).lookup({ title: "Haciendo Nada", artist: "Santaferia, Chico Trujillo" });
-    expect(media?.previewUrl).toBe("https://cdn/Haciendo Nada.mp3");
+    expect(found(media)).toBe("https://cdn/Haciendo Nada.mp3");
     expect(queries).toEqual(["Santaferia, Chico Trujillo Haciendo Nada", "Santaferia Haciendo Nada"]);
   });
 
@@ -132,7 +141,7 @@ describe("DeezerCatalog", () => {
       "BoB Nothing on You",
       "Nothing on You",
     ]);
-    expect(media?.previewUrl).toBe("https://cdn/Nothin' on You.mp3");
+    expect(found(media)).toBe("https://cdn/Nothin' on You.mp3");
   });
 
   it("logs a miss with the track text and the queries tried (no secrets, no images)", async () => {
@@ -140,5 +149,17 @@ describe("DeezerCatalog", () => {
     await new DeezerCatalog({ fetch: fetchReturning([]) }).lookup({ title: "Haciendo Nada", artist: "Santaferia" });
     expect(warn).toHaveBeenCalledWith(expect.stringContaining('"Haciendo Nada" — "Santaferia"'));
     warn.mockRestore();
+  });
+
+  it("preview(ref) asks /track/{id} for a fresh URL; null on any failure", async () => {
+    const fetch = vi.fn(async (url: string) => {
+      expect(url).toBe("https://api.deezer.com/track/123");
+      return new Response(JSON.stringify({ id: 123, preview: "https://cdn/fresh.mp3" }));
+    });
+    expect(await new DeezerCatalog({ fetch }).preview("123")).toBe("https://cdn/fresh.mp3");
+    expect(await new DeezerCatalog({ fetch: fetchReturning([], 500) }).preview("1")).toBeNull();
+    const noPreview = vi.fn(async () => new Response(JSON.stringify({ id: 1, preview: "" })));
+    expect(await new DeezerCatalog({ fetch: noPreview }).preview("1")).toBeNull();
+    expect(await new DeezerCatalog().preview("../etc")).toBeNull(); // only numeric ids
   });
 });

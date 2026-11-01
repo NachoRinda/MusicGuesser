@@ -5,6 +5,8 @@ import { scoreRound, type CastVote } from "./scoreRound.js";
 export interface RoundMedia {
   previewUrl: string | null;
   coverUrl: string | null;
+  /** Catalog id to refresh the preview URL. */
+  ref?: string;
 }
 
 export interface GameOptions {
@@ -41,6 +43,9 @@ export class Game {
 
   constructor(private readonly options: GameOptions) {
     for (const id of options.players) this.scores.set(id, 0);
+    options.rounds.forEach((r, i) => {
+      if (r.media) this.media[i] = { ...r.media };
+    });
     this.stageEndsAt = options.now() + options.questionMs;
   }
 
@@ -121,13 +126,15 @@ export class Game {
     }
   }
 
-  setMedia(roundIndex: number, media: RoundMedia): void {
-    this.media[roundIndex] = media;
+  /** Catalog id of a round's audio, if it has any. */
+  mediaRef(roundIndex: number): string | undefined {
+    return this.media[roundIndex]?.ref;
   }
 
-  /** Track of a round (0-based), to look its media up. */
-  trackOf(roundIndex: number) {
-    return this.options.rounds[roundIndex]?.track;
+  /** Swaps in a fresh preview URL (they expire). */
+  setPreview(roundIndex: number, previewUrl: string): void {
+    const media = this.media[roundIndex];
+    if (media) media.previewUrl = previewUrl;
   }
 
   view(): GameView {

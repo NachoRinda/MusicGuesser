@@ -1,12 +1,13 @@
 import type { AddressInfo } from "node:net";
-import type {
-  ClientToServerEvents,
-  MyVote,
-  PlayerSession,
-  PlayerTracks,
-  Result,
-  RoomState,
-  ServerToClientEvents,
+import {
+  FAKE_TRACK_POOL,
+  type ClientToServerEvents,
+  type MyVote,
+  type PlayerSession,
+  type PlayerTracks,
+  type Result,
+  type RoomState,
+  type ServerToClientEvents,
 } from "@mg/shared";
 import { io as connect, type Socket } from "socket.io-client";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
@@ -26,10 +27,17 @@ type Client = Socket<ServerToClientEvents, ClientToServerEvents> & {
 // Short stages so timers can be exercised for real.
 const QUESTION_MS = 400;
 const STAGE_MS = 60;
-const media = { previewUrl: "https://cdn.test/preview.mp3", coverUrl: "https://img.test/cover.jpg" };
+const coverUrl = "https://img.test/cover.jpg";
 
 describe("game sockets", () => {
-  const catalog = new FakeCatalog(media);
+  /** Tracks whose title is in here aren't "on Deezer". */
+  const missing = new Set<string>();
+  let catalogAnswer: "found" | "notFound" = "found";
+  const catalog = new FakeCatalog((track) =>
+    catalogAnswer === "notFound" || missing.has(track.title)
+      ? { status: "notFound" }
+      : { status: "found", media: { ref: track.title, previewUrl: `https://prep.test/${track.title}.mp3`, coverUrl } },
+  );
   const { httpServer, io } = createAppServer({
     extractor: new FakeExtractor(),
     catalog,
@@ -45,6 +53,8 @@ describe("game sockets", () => {
 
   afterEach(() => {
     for (const c of clients.splice(0)) c.disconnect();
+    missing.clear();
+    catalogAnswer = "found";
   });
 
   afterAll(async () => {
@@ -182,13 +192,51 @@ describe("game sockets", () => {
     expect(again.votes).toEqual([{ round: 1, targetId: beto!.session.playerId }]);
   });
 
-  it("looks up the round's audio and shows it in the state", async () => {
+  it("Empezar: 'starting' while looking songs up, then round 1 with the audio found", async () => {
     const before = catalog.lookups.length;
     const { tv } = await startedGame(5);
-    const s = await waitForState(tv, (st) => st.game?.track.previewUrl === media.previewUrl);
-    expect(s.game?.track.coverUrl).toBe(media.coverUrl);
-    // This round and the next one are fetched ahead.
-    expect(catalog.lookups.length - before).toBe(2);
+    expect(tv.states.some((st) => st.starting && st.phase === "lobby")).toBe(true);
+    const s = tv.states.at(-1)!;
+    expect(s.starting).toBeUndefined();
+    expect(s.game?.track).toMatchObject({ previewUrl: `https://prep.test/${s.game!.track.title}.mp3`, coverUrl });
+    expect(catalog.lookups.length - before).toBe(5);
+  });
+
+  it("tracks not on Deezer are never played", async () => {
+    FAKE_TRACK_POOL.forEach((t, i) => i % 2 === 0 && missing.add(t.title));
+    const { tv, players } = await startedGame(5);
+    const ids = players.map((p) => p.session.playerId);
+    const titles: string[] = [];
+    for (let round = 1; round <= 5; round++) {
+      const st = await waitForState(tv, (x) => stage(x) === `${round}:question`);
+      titles.push(st.game!.track.title);
+      for (const [i, p] of players.entries()) {
+        ok(await p.phone.emitWithAck("player:vote", { targetId: ids[(i + 1) % ids.length]! }));
+      }
+      for (let k = 0; k < 3; k++) ok(await tv.emitWithAck("host:next"));
+    }
+    expect(titles).toHaveLength(5);
+    expect(titles.filter((t) => missing.has(t))).toEqual([]);
+  });
+
+  it("refreshes the next round's preview by its ref while the current one plays", async () => {
+    const before = catalog.previews.length;
+    const { tv } = await startedGame(5);
+    await tv.emitWithAck("host:next"); // close round 1's question
+    for (let k = 0; k < 3; k++) await tv.emitWithAck("host:next");
+    const r2 = await waitForState(tv, (st) => stage(st) === "2:question");
+    expect(catalog.previews.slice(before)).toContain(r2.game!.track.title);
+    expect(r2.game!.track.previewUrl).toBe(`https://fresh.test/${r2.game!.track.title}.mp3`);
+  });
+
+  it("NO_PLAYABLE_TRACKS when no song is on Deezer; the room goes back to the lobby", async () => {
+    catalogAnswer = "notFound";
+    const tv = await client();
+    const { code } = ok(await tv.emitWithAck("host:create"));
+    for (const name of ["Ana", "Beto", "Caro"]) await readyPlayer(code, name);
+    expect(await tv.emitWithAck("host:start")).toEqual({ ok: false, error: "NO_PLAYABLE_TRACKS" });
+    const s = await waitForState(tv, (st) => st.phase === "lobby" && !st.starting && st.players.length === 3);
+    expect(s.game).toBeUndefined();
   });
 
   it("host:next skips stages; only the host may drive the game", async () => {

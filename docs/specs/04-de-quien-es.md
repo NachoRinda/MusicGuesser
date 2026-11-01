@@ -97,6 +97,17 @@ Primera partida jugable de punta a punta: con ≥ 3 jugadores listos, el host el
 - **Celular, resultado estilo Kahoot**: en las etapas de dueños y votos, la pantalla entera se pone **verde con ✓** si el jugador sumó puntos en la ronda (acertó o no lo descubrieron) y **roja con ✗** si no, con el texto del resultado. En la etapa de ranking vuelve a neutro con su puesto.
 - **Timer por etapa**: se quita el contador global de arriba. Cada etapa muestra su propio timer con etiqueta y barra que se vacía: "Tiempo para votar" (pregunta), "Siguiente en" (revelación). En el celular, el timer va junto a los botones de voto.
 
+## Canciones sin audio se descartan (2026-11-01, aprobado por el usuario)
+Tras la prueba manual hubo rondas sin audio. Causas: "Nothin' on You (con Bruno Mars) — B.o.B" no se encontraba por la palabra "con" (arreglado con las búsquedas de respaldo); "Haciendo Nada — Santaferia" sí se encontraba, así que fue una falla momentánea sin reintento (no quedó registro).
+- **Al tocar "Empezar"** el server busca en Deezer las canciones antes de arrancar. La TV muestra "Preparando canciones…" (botón deshabilitado); mientras tanto no se puede subir capturas, unirse ni cambiar las rondas (`GAME_ALREADY_STARTED`).
+- Se mantiene el reparto parejo: se arman los turnos por jugador como antes y, si la canción de un turno **no está en Deezer**, se prueba otra del mismo jugador (si ya no le quedan, de cualquier otro). Una canción descartada no vuelve a usarse.
+- Si la búsqueda de una canción **falla por red o timeout** (Deezer caído, sin internet), la canción se juega **sin audio**, como antes: mejor jugar sin audio que no poder jugar.
+- Se buscan de a 4 canciones en paralelo (Deezer limita a 50 pedidos cada 5 s).
+- Si ninguna canción tiene audio y ninguna falló por red, "Empezar" responde `NO_PLAYABLE_TRACKS` ("No encontramos el audio de ninguna canción").
+- **Antes de cada ronda** se pide de nuevo la URL del preview por el id de Deezer (`GET /track/{id}`), porque vencen a los ~15 min: la de la ronda siguiente se pide al empezar la actual. Si ese pedido falla, la ronda usa la URL obtenida al preparar (puede seguir vigente).
+- Contrato: `RoomState.starting?: true` mientras se prepara. `MusicCatalog.lookup(track)` devuelve `found` (con `ref` = id de Deezer, preview y tapa), `notFound` o `error`; `MusicCatalog.preview(ref)` da una URL fresca o `null`.
+- `FakeCatalog` (playtest) responde `error` por defecto: el playtest sigue jugando sin audio, ejercitando ese camino.
+
 ## Casos borde
 - Menos canciones distintas que rondas elegidas → se juegan tantas rondas como canciones distintas haya.
 - Canción que tienen todos → se juega; acierta quien vote a cualquier otro.

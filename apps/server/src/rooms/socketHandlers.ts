@@ -33,20 +33,21 @@ export function registerRoomHandlers(io: AppIo, store: RoomStore, options: RoomH
 
   /** Stage timer per room, tagged with the game and stage it was set for. */
   const timers = new Map<string, { game: Game; seq: number; timer: NodeJS.Timeout }>();
-  /** Rounds (0-based) whose media was already requested, per game. */
-  const lookedUp = new WeakMap<Game, Set<number>>();
+  /** Rounds (0-based) whose preview was already refreshed, per game. */
+  const refreshed = new WeakMap<Game, Set<number>>();
 
-  const lookupMedia = (code: string, game: Game, roundIndex: number) => {
-    const track = game.trackOf(roundIndex);
-    const requested = lookedUp.get(game) ?? new Set<number>();
-    lookedUp.set(game, requested);
-    if (!track || requested.has(roundIndex)) return;
-    requested.add(roundIndex);
-    void options.catalog.lookup(track).then((media) => {
-      if (!media) return;
-      game.setMedia(roundIndex, media);
-      // Only worth a broadcast if that round is on screen (otherwise it shows up when it starts).
-      if (store.getGame(code) === game && game.currentRound === roundIndex && !game.finished) broadcast(code);
+  /**
+   * Preview URLs expire (~15 min), so the next round's is fetched again by its catalog id while the
+   * current one plays. Never for a round already on screen: a new URL would restart its audio.
+   */
+  const refreshPreview = (game: Game, roundIndex: number) => {
+    const ref = game.mediaRef(roundIndex);
+    const done = refreshed.get(game) ?? new Set<number>();
+    refreshed.set(game, done);
+    if (!ref || done.has(roundIndex)) return;
+    done.add(roundIndex);
+    void options.catalog.preview(ref).then((url) => {
+      if (url && game.currentRound < roundIndex) game.setPreview(roundIndex, url);
     });
   };
 
@@ -70,8 +71,7 @@ export function registerRoomHandlers(io: AppIo, store: RoomStore, options: RoomH
     }, Math.max(0, deadline.endsAt - Date.now()));
     timer.unref();
     timers.set(code, { game, seq, timer });
-    lookupMedia(code, game, game.currentRound);
-    lookupMedia(code, game, game.currentRound + 1);
+    refreshPreview(game, game.currentRound + 1);
   };
 
   const sendTracks = (code: string, playerId: string) => {
@@ -149,12 +149,14 @@ export function registerRoomHandlers(io: AppIo, store: RoomStore, options: RoomH
       if (typeof ack !== "function") return;
       const { code, role } = socket.data;
       if (!code || role !== "host") return ack(notAuthorized);
-      const res = store.start(code);
-      if (res.ok) {
+      const begun = store.beginStart(code);
+      if (!begun.ok) return ack(begun);
+      broadcast(code); // "Preparando canciones…"
+      void store.completeStart(code, (track) => options.catalog.lookup(track)).then((res) => {
         syncGame(code);
         broadcast(code);
-      }
-      ack(res);
+        ack(res);
+      });
     });
 
     socket.on("host:settings", (req, ack) => {

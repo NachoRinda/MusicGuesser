@@ -20,10 +20,13 @@ import {
   type RoomSettings,
   type RoomState,
   type RoundsSetting,
+  type Track,
 } from "@mg/shared";
 import type { ExtractionOutcome } from "../extraction/evaluate.js";
 import { Game } from "../game/Game.js";
-import { pickRounds } from "../game/pickRounds.js";
+import { pickPlayableRounds } from "../game/pickPlayableRounds.js";
+import { pickRounds, type PickedRound } from "../game/pickRounds.js";
+import type { LookupResult } from "../music/MusicCatalog.js";
 
 /** A room is deleted after its host has been away this long. */
 export const HOST_TTL_MS = 30 * 60 * 1000;
@@ -51,6 +54,8 @@ interface Room {
   settings: RoomSettings;
   /** The game in progress or just finished; undefined in the lobby. */
   game?: Game;
+  /** Looking up the songs' audio after "Empezar" (still in the lobby). */
+  starting: boolean;
 }
 
 export interface RoomStoreOptions {
@@ -91,6 +96,7 @@ export class RoomStore {
       hostConnections: 0,
       hostAwaySince: this.now(),
       settings: { rounds: DEFAULT_ROUNDS },
+      starting: false,
     };
     this.rooms.set(room.code, room);
     return { code: room.code, hostToken: room.hostToken };
@@ -120,7 +126,7 @@ export class RoomStore {
   join(code: string, rawName: string): Result<PlayerSession> {
     const room = this.room(code);
     if (!room) return { ok: false, error: "ROOM_NOT_FOUND" };
-    if (room.phase !== "lobby") return { ok: false, error: "GAME_ALREADY_STARTED" };
+    if (room.phase !== "lobby" || room.starting) return { ok: false, error: "GAME_ALREADY_STARTED" };
 
     const name = rawName.trim();
     const length = [...name].length;
@@ -166,25 +172,58 @@ export class RoomStore {
   setRounds(code: string, rounds: RoundsSetting): Result<object> {
     const room = this.room(code);
     if (!room) return { ok: false, error: "ROOM_NOT_FOUND" };
-    if (room.phase !== "lobby") return { ok: false, error: "GAME_ALREADY_STARTED" };
+    if (room.phase !== "lobby" || room.starting) return { ok: false, error: "GAME_ALREADY_STARTED" };
     if (!ROUND_OPTIONS.includes(rounds)) return { ok: false, error: "INVALID_SETTINGS" };
     room.settings = { rounds };
     return { ok: true };
   }
 
+  /** Starts at once without checking audio (every track playable). */
   start(code: string): Result<object> {
+    const res = this.beginStart(code);
+    if (!res.ok) return res;
+    const room = this.room(code)!;
+    const inGame = room.players.filter((p) => p.inGame);
+    return this.launch(room, pickRounds(inGame, room.settings.rounds, this.random));
+  }
+
+  /**
+   * First half of "Empezar": validates, decides who plays and flags the room as `starting` while
+   * the songs' audio is looked up (`completeStart`). Nothing can join, upload or change meanwhile.
+   */
+  beginStart(code: string): Result<object> {
     const room = this.room(code);
     if (!room) return { ok: false, error: "ROOM_NOT_FOUND" };
-    if (room.phase !== "lobby") return { ok: false, error: "GAME_ALREADY_STARTED" };
+    if (room.phase !== "lobby" || room.starting) return { ok: false, error: "GAME_ALREADY_STARTED" };
     const readyAndConnected = room.players.filter((p) => p.status === "ready" && p.connections > 0).length;
     if (readyAndConnected < MIN_PLAYERS_TO_START) return { ok: false, error: "NOT_ENOUGH_READY_PLAYERS" };
-    room.phase = "playing";
+    room.starting = true;
     // Ready players play even if momentarily disconnected; the rest sit this game out.
     for (const p of room.players) p.inGame = p.status === "ready";
+    return { ok: true };
+  }
+
+  /** Second half: picks rounds keeping only tracks the catalog has (see `pickPlayableRounds`). */
+  async completeStart(code: string, check: (track: Track) => Promise<LookupResult>): Promise<Result<object>> {
+    const room = this.room(code);
+    if (!room?.starting) return { ok: false, error: "ROOM_NOT_FOUND" };
     const inGame = room.players.filter((p) => p.inGame);
+    const rounds = await pickPlayableRounds(inGame, room.settings.rounds, this.random, check);
+    if (this.room(code) !== room || !room.starting) return { ok: false, error: "ROOM_NOT_FOUND" };
+    if (rounds.length === 0) {
+      room.starting = false;
+      for (const p of room.players) p.inGame = false;
+      return { ok: false, error: "NO_PLAYABLE_TRACKS" };
+    }
+    return this.launch(room, rounds);
+  }
+
+  private launch(room: Room, rounds: PickedRound[]): Result<object> {
+    room.starting = false;
+    room.phase = "playing";
     room.game = new Game({
-      rounds: pickRounds(inGame, room.settings.rounds, this.random),
-      players: inGame.map((p) => p.id),
+      rounds,
+      players: room.players.filter((p) => p.inGame).map((p) => p.id),
       now: this.now,
       questionMs: this.questionMs,
       revealStageMs: this.revealStageMs,
@@ -258,7 +297,7 @@ export class RoomStore {
     if (!room) return { ok: false, error: "ROOM_NOT_FOUND" };
     const player = room.players.find((p) => p.id === playerId);
     if (!player) return { ok: false, error: "NOT_AUTHORIZED" };
-    if (room.phase !== "lobby") return { ok: false, error: "GAME_ALREADY_STARTED" };
+    if (room.phase !== "lobby" || room.starting) return { ok: false, error: "GAME_ALREADY_STARTED" };
     if (player.status === "extracting") return { ok: false, error: "EXTRACTION_IN_PROGRESS" };
     player.status = "extracting";
     player.tracks = [];
@@ -300,6 +339,7 @@ export class RoomStore {
       code: room.code,
       phase: room.phase,
       settings: room.settings,
+      ...(room.starting && { starting: true as const }),
       ...(room.game && { game: room.game.view() }),
       players: room.players.map((p) => ({
         id: p.id,

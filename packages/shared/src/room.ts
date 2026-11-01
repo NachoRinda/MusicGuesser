@@ -23,6 +23,8 @@ export interface RoomState {
   settings: RoomSettings;
   /** Present while playing and once finished. */
   game?: GameView;
+  /** Set while the songs' audio is being looked up after "Empezar" (still in the lobby). */
+  starting?: true;
 }
 
 export type RoomErrorCode =
@@ -47,7 +49,9 @@ export type RoomErrorCode =
   | "NOT_IN_GAME"
   | "ALREADY_VOTED"
   /** For oneself, for someone not in the game, or outside the question. */
-  | "INVALID_VOTE";
+  | "INVALID_VOTE"
+  /** No song of the players was found on Deezer. */
+  | "NO_PLAYABLE_TRACKS";
 
 export type Result<T> = ({ ok: true } & T) | { ok: false; error: RoomErrorCode };
 
@@ -107,4 +111,5 @@ export const ROOM_ERROR_MESSAGES: Record<RoomErrorCode, string> = {
   NOT_IN_GAME: "No estás jugando esta partida",
   ALREADY_VOTED: "Ya votaste en esta ronda",
   INVALID_VOTE: "Ese voto no vale",
+  NO_PLAYABLE_TRACKS: "No encontramos el audio de ninguna canción",
 };

@@ -1,5 +1,6 @@
 import { FAKE_TRACK_POOL, ROOM_CODE_ALPHABET, type HostSession, type Track } from "@mg/shared";
 import { beforeEach, describe, expect, it } from "vitest";
+import type { LookupResult } from "../music/MusicCatalog.js";
 import { HOST_TTL_MS, RoomStore } from "./RoomStore.js";
 
 const QUESTION = 45_000;
@@ -446,6 +447,65 @@ describe("RoomStore", () => {
       const json = JSON.stringify(store.getState(host.code));
       expect(json).not.toContain("owners");
       expect(json).not.toContain("targetId");
+    });
+  });
+
+  describe("start with audio check", () => {
+    const found = (t: Track): LookupResult => ({
+      status: "found",
+      media: { ref: t.title, previewUrl: `https://p/${t.title}.mp3`, coverUrl: null },
+    });
+
+    it("beginStart flags the room as starting (state + blocks joins, uploads, settings and a second start)", () => {
+      const [a] = ["Ana", "Beto", "Caro"].map((n) => joinReady(n));
+      ok(store.beginStart(host.code));
+      const s = store.getState(host.code)!;
+      expect(s.starting).toBe(true);
+      expect(s.phase).toBe("lobby");
+      expect(store.join(host.code, "Dani")).toEqual({ ok: false, error: "GAME_ALREADY_STARTED" });
+      expect(store.beginExtraction(host.code, a!.playerId)).toEqual({ ok: false, error: "GAME_ALREADY_STARTED" });
+      expect(store.setRounds(host.code, 5)).toEqual({ ok: false, error: "GAME_ALREADY_STARTED" });
+      expect(store.beginStart(host.code)).toEqual({ ok: false, error: "GAME_ALREADY_STARTED" });
+    });
+
+    it("beginStart validates like start", () => {
+      joinReady("Ana");
+      expect(store.beginStart(host.code)).toEqual({ ok: false, error: "NOT_ENOUGH_READY_PLAYERS" });
+      expect(store.getState(host.code)!.starting).toBeUndefined();
+    });
+
+    it("completeStart plays only tracks found in the catalog, with their media", async () => {
+      ["Ana", "Beto", "Caro"].map((n) => joinReady(n));
+      ok(store.setRounds(host.code, 5));
+      ok(store.beginStart(host.code));
+      const missing = new Set(TEN_TRACKS.slice(0, 3).map((t) => t.title));
+      ok(await store.completeStart(host.code, async (t) => (missing.has(t.title) ? { status: "notFound" } : found(t))));
+      const s = store.getState(host.code)!;
+      expect(s.starting).toBeUndefined();
+      expect(s.phase).toBe("playing");
+      expect(s.game?.totalRounds).toBe(5);
+      expect(missing.has(s.game!.track.title)).toBe(false);
+      expect(s.game?.track.previewUrl).toBe(`https://p/${s.game!.track.title}.mp3`);
+    });
+
+    it("NO_PLAYABLE_TRACKS when nothing is in the catalog: back to the lobby", async () => {
+      ["Ana", "Beto", "Caro"].map((n) => joinReady(n));
+      ok(store.beginStart(host.code));
+      expect(await store.completeStart(host.code, async () => ({ status: "notFound" }))).toEqual({
+        ok: false,
+        error: "NO_PLAYABLE_TRACKS",
+      });
+      const s = store.getState(host.code)!;
+      expect(s.phase).toBe("lobby");
+      expect(s.starting).toBeUndefined();
+      expect(s.players.every((p) => !p.inGame)).toBe(true);
+    });
+
+    it("network failures don't block the game: those tracks play without audio", async () => {
+      ["Ana", "Beto", "Caro"].map((n) => joinReady(n));
+      ok(store.beginStart(host.code));
+      ok(await store.completeStart(host.code, async () => ({ status: "error" })));
+      expect(store.getState(host.code)!.game?.track.previewUrl).toBeNull();
     });
   });
 });
