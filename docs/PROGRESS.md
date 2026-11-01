@@ -4,7 +4,7 @@
 - **Fase 4 — "¿De quién es?" + audio Deezer: completa** (2026-11-01), tag `fase-4`. Tests 138, playtest 40/40, prueba manual del usuario OK (celular + audio real).
 - Fase 3 — Extracción de capturas: completa (2026-10-31), tag `fase-3`.
 - **Playtest automatizado**: `npm run playtest` (escenarios `sala`, `capturas` y `de-quien-es`). Usa `MG_EXTRACTOR=fake` y `MG_CATALOG=fake`.
-- **Próximo paso**: decidir con el usuario si el feedback de diseño de la fase 4 (ver "Feedback pendiente") se hace ya o en la fase 6; después spec 05. Pendiente opcional: un fixture de Apple Music.
+- **Próximo paso**: que el usuario pruebe los ajustes de diseño de la fase 4; después spec 05. La música de tensión queda pendiente (ver "Feedback pendiente"). Pendiente opcional: un fixture de Apple Music.
 
 ## Fases
 | # | Fase | Estado |
@@ -17,10 +17,8 @@
 | 6 | Pulido y deploy | — |
 
 ## Feedback pendiente (prueba manual fase 4, 2026-11-01)
-- TV: las 3 etapas de revelación deben diferenciarse más visualmente (hoy solo cambia el título).
-- Celular: el resultado tiene que verse también cuando fallás, en rojo. Estilo Kahoot: pantalla verde si acertaste, roja si no.
-- TV: un timer por etapa, no uno global arriba (hoy no se entiende a qué corresponde).
-- Música de tensión de uso libre cuando termina el preview de Deezer (30 s), para que no quede en silencio.
+- Música de tensión de uso libre cuando termina el preview de Deezer (30 s), para que no quede en silencio. A decidir: pista real con licencia (fase 6) o loop generado con Web Audio.
+- (Hechos el 2026-11-01: etapas distintas en la TV, celular verde/rojo, timer por etapa.)
 
 ## Decisiones
 - **Fuente de datos = capturas + visión**, no APIs de streaming. Spotify Dev Mode limita a 5 usuarios y desde feb-2026 no devuelve canciones de playlists ajenas; Last.fm solo registra desde que se conecta (exige preparación); elegir canciones a mano rompe la autenticidad.
@@ -81,3 +79,8 @@
 - Web: TV (selector de rondas, pregunta con audio y ✓ de quién votó, 3 etapas de revelación, final, "Jugar otra vez", botón para desbloquear el audio) y celular (votar, resultado, puesto, espectador).
 - Playtest `de-quien-es` 14/14; `sala` y `capturas` actualizados (40/40 en total). Un test de sockets falló una vez por timing (miraba solo el último estado); se arregló con un cursor sobre todos los estados recibidos y pasó 8/8 bajo carga de CPU.
 - **No probado todavía**: audio real de Deezer sonando en un navegador (el playtest usa el catálogo falso) ni el desbloqueo de autoplay en la TV.
+
+### 2026-11-01 — Ajustes de diseño fase 4
+- Feedback de la prueba manual, agregado al spec 04 ("Ajustes de diseño…"): cada etapa de revelación con fondo y composición propios (dueños violeta con tarjetas, votos oscuro con tarjetas verde/roja, ranking azul con barras); celular a pantalla completa verde ✓ si sumó puntos en la ronda, rojo ✗ si no; timer por etapa con etiqueta y barra ("Tiempo para votar" / "Siguiente en"), sin contador global.
+- Playtest `de-quien-es` con 4 chequeos nuevos (18/18; 44/44 en total).
+- `npm run playtest` se puede correr junto a un `npm run dev` propio: `PORT` también define el proxy de Vite y `MG_PLAYTEST_URL` cambia la URL (p. ej. server `PORT=3100` + `vite --port 5180`).

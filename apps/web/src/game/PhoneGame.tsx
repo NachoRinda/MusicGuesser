@@ -2,6 +2,7 @@ import { ROOM_ERROR_MESSAGES, rankOf, type MyVote, type RoomState } from "@mg/sh
 import { useState } from "react";
 import type { AppSocket } from "../socket.js";
 import { nameOf, Scoreboard } from "./Scoreboard.js";
+import { StageTimer } from "./StageTimer.js";
 import { TrackCard } from "./TrackCard.js";
 import { useCountdown } from "./useCountdown.js";
 
@@ -18,7 +19,7 @@ export function PhoneGame({
   myVote: MyVote | null;
 }) {
   const game = room.game!;
-  const left = useCountdown(game.remainingMs, room);
+  const leftMs = useCountdown(game.remainingMs, room);
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const me = room.players.find((p) => p.id === meId);
@@ -42,10 +43,7 @@ export function PhoneGame({
 
   const header = (
     <header className="round-header">
-      <span>
-        Ronda {game.round}/{game.totalRounds}
-      </span>
-      <span className="countdown">{left}</span>
+      Ronda {game.round}/{game.totalRounds}
     </header>
   );
 
@@ -53,6 +51,7 @@ export function PhoneGame({
     return (
       <main className="center">
         {header}
+        <StageTimer stage={game.stage} leftMs={leftMs} />
         <p className="muted">La partida empezó sin vos: no tenías canciones listas. Mirá la TV.</p>
         <TrackCard track={game.track} />
       </main>
@@ -78,6 +77,7 @@ export function PhoneGame({
         ) : (
           <>
             <h2>¿De quién es?</h2>
+            <StageTimer stage={game.stage} leftMs={leftMs} />
             <div className="vote-buttons">
               {others.map((p) => (
                 <button key={p.id} disabled={sending} onClick={() => void vote(p.id)}>
@@ -96,27 +96,42 @@ export function PhoneGame({
   const mine = reveal.votes.find((v) => v.voterId === meId);
   const isOwner = reveal.owners.includes(meId);
   const ownerNames = reveal.owners.map((id) => nameOf(room.players, id)).join(" y ");
+  const gained = reveal.points.find((p) => p.playerId === meId)?.points ?? 0;
+
+  if (game.stage === "ranking") {
+    return (
+      <main className="center">
+        {header}
+        <p className="result">
+          Vas {place}° con {myScore} puntos
+        </p>
+        {gained > 0 && <p className="ok">+{gained} en esta ronda</p>}
+        <StageTimer stage={game.stage} leftMs={leftMs} />
+      </main>
+    );
+  }
+
+  // Owners and votes stages: the whole screen says how the round went (green: scored, red: didn't).
+  const won = gained > 0;
   return (
-    <main className="center">
+    <main className={`center outcome ${won ? "outcome-win" : "outcome-lose"}`} data-outcome={won ? "win" : "lose"}>
       {header}
-      <TrackCard track={game.track} />
+      <div className="outcome-icon" aria-hidden>
+        {won ? "✓" : "✗"}
+      </div>
       <div className="result">
-        {mine?.correct && <p className="ok">¡Acertaste! +{mine.points}</p>}
+        {mine?.correct && <p>¡Acertaste! +{mine.points}</p>}
         {!mine?.correct && !isOwner && (
           <p>
             {mine?.targetId ? "No" : "No votaste"}, era de {ownerNames}
           </p>
         )}
-        {isOwner && reveal.ownerPoints > 0 && <p className="ok">Nadie te descubrió: +{reveal.ownerPoints}</p>}
-        {isOwner && reveal.ownerPoints === 0 && reveal.owners.length < (game.scores.length || 0) && (
-          <p>Te descubrieron</p>
-        )}
+        {isOwner && reveal.ownerPoints > 0 && <p>Nadie te descubrió: +{reveal.ownerPoints}</p>}
+        {isOwner && reveal.ownerPoints === 0 && reveal.owners.length < game.scores.length && <p>Te descubrieron</p>}
+        {isOwner && !mine?.correct && reveal.owners.length === game.scores.length && <p>La tienen todos: había que votar a otro</p>}
       </div>
-      {game.stage === "ranking" && (
-        <p className="result">
-          Vas {place}° con {myScore} puntos
-        </p>
-      )}
+      <TrackCard track={game.track} />
+      <StageTimer stage={game.stage} leftMs={leftMs} />
     </main>
   );
 }

@@ -87,6 +87,15 @@ Primera partida jugable de punta a punta: con ≥ 3 jugadores listos, el host el
 - `GET /health` informa también `catalog: "fake" | "deezer"`; el playtest levanta el server con `MG_CATALOG=fake` (sin red).
 - Si todos tienen la canción, el celular del dueño no muestra "Te descubrieron" (no había a quién esconderse).
 
+## Ajustes de diseño tras la prueba manual (2026-11-01, aprobados por el usuario)
+- **TV, etapas bien distintas** (no solo el título): cada etapa tiene su propio fondo y composición.
+  - Pregunta: fondo neutro, la canción grande.
+  - Dueños: fondo violeta, los nombres de los dueños como tarjetas gigantes, la canción chica.
+  - Votos: fondo oscuro, una tarjeta por jugador, verde (acertó) o roja (falló / no votó), con "+N".
+  - Ranking: fondo azul, tabla con barras proporcionales al puntaje y "+N" de la ronda.
+- **Celular, resultado estilo Kahoot**: en las etapas de dueños y votos, la pantalla entera se pone **verde con ✓** si el jugador sumó puntos en la ronda (acertó o no lo descubrieron) y **roja con ✗** si no, con el texto del resultado. En la etapa de ranking vuelve a neutro con su puesto.
+- **Timer por etapa**: se quita el contador global de arriba. Cada etapa muestra su propio timer con etiqueta y barra que se vacía: "Tiempo para votar" (pregunta), "Siguiente en" (revelación). En el celular, el timer va junto a los botones de voto.
+
 ## Casos borde
 - Menos canciones distintas que rondas elegidas → se juegan tantas rondas como canciones distintas haya.
 - Canción que tienen todos → se juega; acierta quien vote a cualquier otro.

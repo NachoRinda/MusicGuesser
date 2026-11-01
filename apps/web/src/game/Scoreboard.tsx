@@ -10,20 +10,29 @@ export function Scoreboard({
   players,
   roundPoints,
   meId,
+  bars = false,
 }: {
   scores: PlayerScore[];
   players: PublicPlayer[];
   roundPoints?: PlayerPoints[];
   meId?: string;
+  /** Draw a bar proportional to each score (TV ranking). */
+  bars?: boolean;
 }) {
+  const top = Math.max(1, ...scores.map((s) => s.score));
   return (
-    <ol className="scoreboard">
+    <ol className={`scoreboard${bars ? " with-bars" : ""}`}>
       {scores.map((s) => {
         const gained = roundPoints?.find((p) => p.playerId === s.playerId)?.points ?? 0;
         return (
           <li key={s.playerId} className={s.playerId === meId ? "me" : ""} data-player={nameOf(players, s.playerId)}>
             <span className="place">{rankOf(scores, s.playerId)}.</span>
             <span className="name">{nameOf(players, s.playerId)}</span>
+            {bars && (
+              <span className="bar">
+                <span style={{ width: `${(s.score / top) * 100}%` }} />
+              </span>
+            )}
             <span className="score">{s.score}</span>
             {roundPoints && gained > 0 && <span className="gained">+{gained}</span>}
           </li>

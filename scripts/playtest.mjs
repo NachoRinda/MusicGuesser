@@ -5,7 +5,8 @@ import { spawn } from "node:child_process";
 import { existsSync, mkdirSync } from "node:fs";
 import { chromium, devices } from "playwright";
 
-const BASE = "http://localhost:5173";
+/** Override to run against a second instance, e.g. MG_PLAYTEST_URL=http://localhost:5180. */
+const BASE = process.env.MG_PLAYTEST_URL ?? "http://localhost:5173";
 const SHOTS = "test-results/playtest";
 const T = { timeout: 3000 };
 const WINDOWS_CHROMES = [
@@ -321,6 +322,12 @@ async function deQuienEs({ browser, check, shot }) {
     await tv.getByText("sin audio").waitFor(T); // catálogo falso en el playtest
     return title;
   });
+
+  await check("Timer propio de la etapa ('Tiempo para votar') en TV y celular, sin contador global", async () => {
+    await tv.locator(".stage-timer", { hasText: "Tiempo para votar" }).waitFor(T);
+    await ana.page.locator(".stage-timer", { hasText: "Tiempo para votar" }).waitFor(T);
+    if (await tv.locator(".round-header .countdown").count()) throw new Error("sigue el contador global");
+  });
   await shot(tv, "dqe-01-tv-pregunta");
 
   await check("Cada celular puede votar a los otros dos, nunca a sí mismo", async () => {
@@ -359,9 +366,33 @@ async function deQuienEs({ browser, check, shot }) {
   });
   await shot(tv, "dqe-03-tv-duenos");
 
-  await check("Cada celular ve su resultado", async () => {
-    const re = /¡Acertaste! \+\d+|No, era de|No votaste|Nadie te descubrió|Te descubrieron/;
-    for (const p of phones) await p.page.locator(".result").getByText(re).first().waitFor(T);
+  /** Background color of the TV page body for the current stage. */
+  const tvBg = async () => {
+    await tv.waitForTimeout(600); // let the background transition finish
+    return tv.locator(".host-game").evaluate((el) => el.ownerDocument.defaultView.getComputedStyle(el).backgroundColor);
+  };
+  const bgs = {};
+  bgs.owners = await tvBg();
+
+  await check("Cada celular ve su resultado a pantalla completa: verde si sumó, rojo si no", async () => {
+    const re = /¡Acertaste! \+\d+|No, era de|No votaste|Nadie te descubrió|Te descubrieron|La tienen todos/;
+    const seen = [];
+    for (const p of phones) {
+      await p.page.locator(".result").getByText(re).first().waitFor(T);
+      const outcome = await p.page.locator("main.outcome").getAttribute("data-outcome", T);
+      const text = await p.page.locator(".result").textContent();
+      const scored = /\+\d+/.test(text);
+      if ((outcome === "win") !== scored) throw new Error(`${p.name}: ${outcome} con "${text}"`);
+      const bg = await p.page.locator("main.outcome").evaluate((el) => el.ownerDocument.defaultView.getComputedStyle(el).backgroundColor);
+      seen.push(`${p.name} ${outcome} (${bg})`);
+    }
+    return seen.join(", ");
+  });
+  await shot(ana.page, "dqe-04b-celular-resultado");
+
+  await check("Etapa de dueños: tarjetas por dueño y 'Siguiente en' con su timer", async () => {
+    if (!(await tv.locator(".owner-card").count())) throw new Error("sin tarjetas");
+    await tv.locator(".stage-timer", { hasText: "Siguiente en" }).waitFor(T);
   });
   await shot(beto.page, "dqe-04-celular-resultado");
 
@@ -372,6 +403,7 @@ async function deQuienEs({ browser, check, shot }) {
     const lines = await tv.locator(".votes li").count();
     if (lines !== 3) throw new Error(`${lines} votos`);
     if (ms < 7_000) throw new Error(`avanzó a los ${ms} ms`);
+    bgs.votes = await tvBg();
     return `${(ms / 1000).toFixed(1)} s`;
   });
   await shot(tv, "dqe-05-tv-votos");
@@ -381,6 +413,14 @@ async function deQuienEs({ browser, check, shot }) {
     await tv.getByRole("heading", { name: "Así va" }).waitFor(T);
     if ((await tv.locator(".scoreboard li").count()) !== 3) throw new Error("ranking incompleto");
     await ana.page.getByText(/Vas \d+° con \d+ puntos/).waitFor(T);
+    if (await tv.locator(".scoreboard .bar").count() !== 3) throw new Error("sin barras");
+    bgs.ranking = await tvBg();
+  });
+
+  await check("Las 3 etapas de revelación tienen fondos distintos en la TV", async () => {
+    const distinct = new Set(Object.values(bgs));
+    if (distinct.size !== 3) throw new Error(JSON.stringify(bgs));
+    return Object.entries(bgs).map(([k, v]) => `${k} ${v}`).join(", ");
   });
   await shot(tv, "dqe-06-tv-ranking");
 
