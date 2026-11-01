@@ -6,7 +6,11 @@ import path from "node:path";
 import { MAX_SCREENSHOT_BYTES, type ScreenshotMediaType, type Track } from "@mg/shared";
 import { loadRootEnv } from "../env.js";
 import { ClaudeExtractor, EXTRACTION_MODEL } from "./ClaudeExtractor.js";
-import { trackKey } from "./evaluate.js";
+import { trackKey as appTrackKey } from "./evaluate.js";
+
+/** The app's comparison, plus "..." ≡ "…" for titles cut off on screen (only the eval needs this). */
+const trackKey = (t: Track) =>
+  appTrackKey({ title: t.title.replace(/(\.{3}|…)\s*$/u, "…"), artist: t.artist.replace(/(\.{3}|…)\s*$/u, "…") });
 
 loadRootEnv();
 

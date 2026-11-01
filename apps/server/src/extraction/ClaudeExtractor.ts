@@ -22,7 +22,9 @@ const SYSTEM_PROMPT = `You read screenshots of music apps for a party game. For 
 Rules:
 - Only transcribe what is visible. Never guess, complete or add songs that are not on screen.
 - If a title or artist is cut off by the edge of the screen or an ellipsis, transcribe the visible part as is.
-- Skip rows whose title or artist is not visible at all, and skip non-song items (headers, buttons, ads, "recommended" sections, the playlist's own title).
+- Skip rows whose title or artist is hidden or cut off entirely (e.g. a row half-covered by a bar at the top or bottom of the screen), and skip non-song items (headers, buttons, ads, "recommended" sections, the playlist's own title).
+- Skip the "now playing" mini-player bar near the bottom of the screen: it shows the song currently playing, which is not necessarily part of the list.
+- Badges next to the artist (an "E" for explicit, a download or verified check mark) are not part of the artist name. Leave durations out too.
 - If it is not a playlist, return an empty track list.`;
 
 const OUTPUT_SCHEMA = {
