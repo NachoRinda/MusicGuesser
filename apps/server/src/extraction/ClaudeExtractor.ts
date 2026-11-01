@@ -3,7 +3,10 @@ import type { Platform, ScreenshotReading } from "./evaluate.js";
 import type { Extractor } from "./Extractor.js";
 import type { ImageInput } from "./upload.js";
 
-export const EXTRACTION_MODEL = "claude-opus-5-5";
+/** Haiku matched Opus on the eval (100% / 100%) at ~1/35 of the cost and about twice as fast (2026-10-31). */
+export const DEFAULT_EXTRACTION_MODEL = "claude-haiku-5-5";
+/** Models where the server-side refusal fallback is available (Haiku has none). */
+const SUPPORTS_FALLBACK = (model: string) => !model.startsWith("claude-haiku");
 const TIMEOUT_MS = 60_000;
 
 type CreateParams = Anthropic.Beta.Messages.MessageCreateParamsNonStreaming;
@@ -67,9 +70,13 @@ export class ExtractionError extends Error {
  */
 export class ClaudeExtractor implements Extractor {
   private readonly create: CreateMessage;
+  readonly model: string;
+  /** Token usage of the last request (for the eval's cost report). */
+  lastUsage: Message["usage"] | null = null;
 
-  constructor(create?: CreateMessage) {
+  constructor({ create, model = DEFAULT_EXTRACTION_MODEL }: { create?: CreateMessage; model?: string } = {}) {
     this.create = create ?? defaultCreate();
+    this.model = model;
   }
 
   async extract(images: ImageInput[]): Promise<ScreenshotReading[]> {
@@ -88,17 +95,20 @@ export class ClaudeExtractor implements Extractor {
 
     const response = await this.create(
       {
-        model: EXTRACTION_MODEL,
+        model: this.model,
         max_tokens: 16000,
         // If a safety classifier declines, the API retries on a recommended fallback model.
-        betas: ["server-side-fallback-2026-07-01"],
-        fallbacks: "default",
+        ...(SUPPORTS_FALLBACK(this.model) && {
+          betas: ["server-side-fallback-2026-07-01"],
+          fallbacks: "default" as const,
+        }),
         output_config: { effort: "low", format: { type: "json_schema", schema: OUTPUT_SCHEMA } },
         system: SYSTEM_PROMPT,
         messages: [{ role: "user", content }],
       },
       { timeout: TIMEOUT_MS },
     );
+    this.lastUsage = response.usage ?? null;
 
     if (response.stop_reason !== "end_turn") {
       throw new ExtractionError(`unexpected stop_reason: ${response.stop_reason}`);

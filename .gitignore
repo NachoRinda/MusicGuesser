@@ -4,3 +4,9 @@ dist/
 .env
 test-results/
 playwright-report/
+
+# Capturas reales: solo para el eval local (pueden tener datos personales)
+fixtures/screenshots/*.png
+fixtures/screenshots/*.jpg
+fixtures/screenshots/*.jpeg
+fixtures/screenshots/*.webp

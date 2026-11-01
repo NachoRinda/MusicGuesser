@@ -1,0 +1,33 @@
+{
+  "isPlaylist": true,
+  "tracks": [
+    {
+      "title": "Qué Sería",
+      "artist": "Francisca Valenzuela"
+    },
+    {
+      "title": "El Gil De Tu Ex",
+      "artist": "Santa Feria"
+    },
+    {
+      "title": "Treat You Better",
+      "artist": "Shawn Mendes"
+    },
+    {
+      "title": "Charmless Man",
+      "artist": "Blur"
+    },
+    {
+      "title": "Dirty Diana",
+      "artist": "Michael Jackson"
+    },
+    {
+      "title": "Tattoo",
+      "artist": "Grupo Zúmbale Primo"
+    },
+    {
+      "title": "Imitadora",
+      "artist": "Romeo Santos"
+    }
+  ]
+}

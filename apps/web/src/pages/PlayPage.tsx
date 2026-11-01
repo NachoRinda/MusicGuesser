@@ -217,7 +217,10 @@ function Screenshots({ socket, tracks }: { socket: AppSocket; tracks: PlayerTrac
 function Instructions() {
   return (
     <div className="instructions">
-      <p>Subí 1 o 2 capturas de tu playlist de <strong>más escuchadas</strong>:</p>
+      <p>
+        Subí <strong>2 capturas</strong> de tu playlist de <strong>más escuchadas</strong>: una arriba de todo y otra
+        después de bajar un poco.
+      </p>
       <ul>
         <li>
           <strong>Spotify</strong>: buscá “En repetición” (On Repeat)
@@ -229,7 +232,7 @@ function Instructions() {
           <strong>Apple Music</strong>: tu “Replay” del año
         </li>
       </ul>
-      <p className="muted">Se tienen que ver al menos 10 canciones (podés mandar 2 capturas).</p>
+      <p className="muted">Entre las dos se tienen que ver al menos 10 canciones. Elegilas juntas.</p>
     </div>
   );
 }

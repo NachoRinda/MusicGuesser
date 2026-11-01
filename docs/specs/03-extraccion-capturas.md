@@ -1,6 +1,6 @@
 # Spec 03 — Extracción de capturas (Claude vision)
 
-**Estado: aprobado** (2026-10-31). Implementado 2026-10-31 salvo eval con API real y prueba manual (ver criterios); contrato ajustado al implementar (ver "Cambios al implementar"). Decisión al aprobar: se acepta **cualquier playlist** (no solo las de "más escuchadas"); solo se rechaza lo que no es una playlist.
+**Estado: aprobado** (2026-10-31). Implementado 2026-10-31 salvo la prueba manual (ver criterios); contrato ajustado al implementar (ver "Cambios al implementar"). Decisión al aprobar: se acepta **cualquier playlist** (no solo las de "más escuchadas"); solo se rechaza lo que no es una playlist.
 
 ## Objetivo
 Reemplazar las canciones falsas por las reales: cada jugador sube 1–2 capturas de su playlist autogenerada de "más escuchadas", un modelo con visión extrae título y artista, y el jugador queda **listo** cuando hay al menos 10 canciones válidas. La TV muestra quién está listo y solo deja empezar con ≥ 3 jugadores listos.
@@ -52,7 +52,10 @@ Reemplazar las canciones falsas por las reales: cada jugador sube 1–2 capturas
 - `PublicPlayer` suma también `inGame` (si juega la partida en curso; `false` en el lobby).
 - Límite por imagen: **3,75 MB** (no 5 MB): la API limita a 5 MB *en base64*, que infla 4/3. El cliente recomprime a JPEG hasta entrar. `maxHttpBufferSize` ≈ 8,5 MB.
 - Imágenes que el navegador no puede decodificar pero son de tipo soportado y chicas se envían tal cual (el server/modelo decide). HEIC u otros formatos decodificables se convierten a JPEG.
-- `ClaudeExtractor`: `effort: "low"` (es transcripción; prioriza latencia), `fallbacks: "default"` (si un clasificador de seguridad rechaza, la API reintenta en otro modelo), timeout de 60 s y 1 reintento del SDK; el server corta igual a los 60 s.
+- `ClaudeExtractor`: modelo **`claude-haiku-5-5` por defecto** (configurable con `MG_EXTRACTION_MODEL`). El eval dio 100 % de clasificación, recall y precisión tanto con Opus 5.5 como con Haiku 5.5 (Haiku: 3 corridas estables, ~US$0,0004 por captura contra ~US$0,015, y ~2 s contra ~3,5 s). `effort: "low"`. `fallbacks: "default"` solo en modelos que lo soportan (Haiku no tiene). Timeout de 60 s y 1 reintento del SDK; el server corta igual a los 60 s.
+- El prompt excluye la barra de "reproduciendo ahora", las filas tapadas y los badges (la "E" de explícito).
+- Con capturas reales, una sola captura con el encabezado de la playlist muestra 4–7 canciones: las instrucciones piden **2 capturas** (arriba + scroll). Con pares reales: Spotify 14 y YT Music 17 canciones → `ready`; un par con una imagen que no es playlist → `invalid`.
+- Las imágenes de `fixtures/screenshots/` no se commitean (`.gitignore`; pueden tener datos personales); sí los `*.expected.json`.
 - Credenciales: el SDK acepta `ANTHROPIC_API_KEY`, `ANTHROPIC_AUTH_TOKEN` o un perfil de `ant auth login`. El server no falla al arrancar: avisa si no hay variable y cada envío sin credencial termina en `error`. El server carga el `.env` de la raíz.
 - `GET /health` informa `extractor: "fake" | "claude"`; el playtest se niega a correr contra un server con el extractor real (gastaría API con imágenes falsas) y levanta el suyo con `MG_EXTRACTOR=fake`.
 
@@ -77,7 +80,7 @@ Reemplazar las canciones falsas por las reales: cada jugador sube 1–2 capturas
 - [x] El estado difundido nunca incluye canciones ni tokens.
 - [x] Ninguna ruta de código escribe imágenes a disco ni las loguea (revisión + test que espía `console`).
 - [x] Escenario `capturas` en `npm run playtest`: 3 celulares suben capturas (uno inválido y luego reintenta), la TV ve los estados y empieza.
-- [ ] Eval con la API real sobre los fixtures cumple la meta. *(pendiente: faltan fixtures reales y credencial)*
+- [x] Eval con la API real sobre los fixtures cumple la meta (5 fixtures: Spotify ×2, YT Music ×2, 1 no-playlist; 100 % con Opus 5.5 y Haiku 5.5).
 - [ ] Prueba manual: subir tu captura real desde tu celular. *(pendiente)*
 
 ## Fuera de alcance

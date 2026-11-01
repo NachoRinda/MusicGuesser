@@ -1,6 +1,6 @@
 import type Anthropic from "@anthropic-ai/sdk";
 import { describe, expect, it, vi } from "vitest";
-import { ClaudeExtractor, EXTRACTION_MODEL, ExtractionError, type CreateMessage } from "./ClaudeExtractor.js";
+import { ClaudeExtractor, DEFAULT_EXTRACTION_MODEL, ExtractionError, type CreateMessage } from "./ClaudeExtractor.js";
 
 type Message = Anthropic.Beta.Messages.BetaMessage;
 
@@ -9,7 +9,7 @@ function reply(body: unknown, stop_reason: Message["stop_reason"] = "end_turn"):
     id: "msg_test",
     type: "message",
     role: "assistant",
-    model: EXTRACTION_MODEL,
+    model: DEFAULT_EXTRACTION_MODEL,
     stop_reason,
     content: [{ type: "text", text: typeof body === "string" ? body : JSON.stringify(body) }],
   } as unknown as Message;
@@ -21,11 +21,11 @@ const track = { title: "Tusa", artist: "Karol G" };
 
 function extractorReturning(message: Message) {
   const create = vi.fn<CreateMessage>().mockResolvedValue(message);
-  return { create, extractor: new ClaudeExtractor(create) };
+  return { create, extractor: new ClaudeExtractor({ create }) };
 }
 
 describe("ClaudeExtractor", () => {
-  it("sends every image as base64 in one request, with structured output and fallbacks", async () => {
+  it("sends every image as base64 in one request, with structured output (Haiku by default)", async () => {
     const { create, extractor } = extractorReturning(
       reply({ screenshots: [{ isPlaylist: true, platform: "spotify", tracks: [track] }, { isPlaylist: true, platform: "spotify", tracks: [] }] }),
     );
@@ -33,9 +33,8 @@ describe("ClaudeExtractor", () => {
 
     expect(create).toHaveBeenCalledTimes(1);
     const [params, options] = create.mock.calls[0]!;
-    expect(params.model).toBe("claude-opus-5-5");
-    expect(params.fallbacks).toBe("default");
-    expect(params.betas).toContain("server-side-fallback-2026-07-01");
+    expect(params.model).toBe("claude-haiku-5-5");
+    expect(params.fallbacks).toBeUndefined(); // Haiku has no server-side fallback
     expect(params.output_config?.format?.type).toBe("json_schema");
     expect(params.thinking).toBeUndefined();
     expect(options.timeout).toBe(60_000);
@@ -46,6 +45,15 @@ describe("ClaudeExtractor", () => {
       { type: "image", source: { type: "base64", media_type: "image/png", data: png.data.toString("base64") } },
       { type: "image", source: { type: "base64", media_type: "image/jpeg", data: jpg.data.toString("base64") } },
     ]);
+  });
+
+  it("uses another model when configured; Opus gets the server-side refusal fallback", async () => {
+    const create = vi.fn<CreateMessage>().mockResolvedValue(reply({ screenshots: [{ isPlaylist: false, platform: "none", tracks: [] }] }));
+    await new ClaudeExtractor({ create, model: "claude-opus-5-5" }).extract([png]);
+    const [params] = create.mock.calls[0]!;
+    expect(params.model).toBe("claude-opus-5-5");
+    expect(params.fallbacks).toBe("default");
+    expect(params.betas).toContain("server-side-fallback-2026-07-01");
   });
 
   it("maps the response to one reading per screenshot", async () => {
@@ -81,6 +89,6 @@ describe("ClaudeExtractor", () => {
 
   it("lets API errors through (the caller reports them as a failed extraction)", async () => {
     const create = vi.fn<CreateMessage>().mockRejectedValue(new Error("529 overloaded"));
-    await expect(new ClaudeExtractor(create).extract([png])).rejects.toThrow("529");
+    await expect(new ClaudeExtractor({ create }).extract([png])).rejects.toThrow("529");
   });
 });

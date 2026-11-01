@@ -15,5 +15,5 @@ export function createExtractorFromEnv(env: NodeJS.ProcessEnv = process.env): Ex
       "⚠ No hay ANTHROPIC_API_KEY: si tampoco hay un perfil de `ant auth login`, las capturas van a fallar. Para probar sin la API: MG_EXTRACTOR=fake.",
     );
   }
-  return new ClaudeExtractor();
+  return new ClaudeExtractor({ model: env.MG_EXTRACTION_MODEL || undefined });
 }

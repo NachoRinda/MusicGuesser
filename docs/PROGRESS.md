@@ -1,16 +1,16 @@
 # Progreso
 
 ## Estado actual
-- **Fase 3 — Extracción de capturas: implementada, sin cerrar** (2026-10-31). Código, tests (88) y playtest (26/26) en verde. **Falta para el tag `fase-3`**: correr `npm run eval:extraction` con capturas reales y credencial, y la prueba manual con un celular.
+- **Fase 3 — Extracción de capturas: implementada, sin cerrar** (2026-10-31). Tests (89), playtest (26/26) y eval real (100 % con Haiku 5.5) en verde. **Falta para el tag `fase-3`**: la prueba manual con un celular.
 - **Playtest automatizado**: `npm run playtest` (escenarios `sala` y `capturas`). Usa `MG_EXTRACTOR=fake`.
-- **Próximo paso**: (1) el usuario pone en `fixtures/screenshots/` ≥ 3 capturas de "más escuchadas" (idealmente Spotify/YT Music/Apple) + 1 que no sea playlist; (2) armar los `*.expected.json` y que el usuario los revise; (3) `ANTHROPIC_API_KEY` en `.env` y `npm run eval:extraction`; (4) prueba manual; (5) tag `fase-3` y spec 04.
+- **Próximo paso**: prueba manual (subir 2 capturas reales desde el celular con `npm run dev` y la key en `.env`), tag `fase-3` y spec 04. Falta un fixture de Apple Music (el usuario no tiene; opcional).
 
 ## Fases
 | # | Fase | Estado |
 |---|---|---|
 | 1 | Scaffolding, CLAUDE.md, GAME_DESIGN.md, hook de verificación | ✅ |
 | 2 | Sala en tiempo real con datos falsos | ✅ |
-| 3 | Extracción de capturas (Claude vision) | 🟡 falta eval real + prueba manual |
+| 3 | Extracción de capturas (Claude vision) | 🟡 falta prueba manual |
 | 4 | Modo "¿De quién es?" + audio Deezer | — |
 | 5 | Modo "¿Cuántos la tienen?" + matching | — |
 | 6 | Pulido y deploy | — |
@@ -22,7 +22,8 @@
 - Respuestas de socket por *ack* tipado (`Result<T>`), no por eventos de error sueltos. `room:state` se difunde completo tras cada cambio.
 - Conexión contada por sockets (no booleano): al recargar, el socket nuevo puede conectar antes de que caiga el viejo.
 - Se acepta **cualquier playlist** (no solo "más escuchadas"); solo se rechaza lo que no es una playlist. Decisión del usuario al aprobar el spec 03: menos falsos rechazos; las instrucciones igual piden la de más escuchadas.
-- Extracción con `claude-opus-5-5`, salida estructurada (JSON schema), `effort: low`, `fallbacks: "default"`. Un request por envío (1–2 imágenes).
+- Extracción con **`claude-haiku-5-5`** (igualó a Opus 5.5 en el eval a ~1/35 del costo: ~US$0,0004 por captura, así que US$5 alcanzan para miles de envíos), salida estructurada (JSON schema), `effort: low`. Un request por envío (1–2 imágenes). Opus con `MG_EXTRACTION_MODEL=claude-opus-5-5`.
+- La API de Anthropic es aparte de Claude Pro: el usuario cargó US$5 de crédito prepago (2026-10-31); la key está en `.env` (no se commitea).
 - Router propio mínimo (`apps/web/src/router.ts`) en vez de react-router: solo hay 3 rutas.
 
 ## Bitácora
@@ -55,4 +56,10 @@
 - Web: subir capturas (achica/recomprime en el celular), estados, lista solo lectura, "Reintentar captura"; la TV muestra estado y cantidad, nunca canciones.
 - Playtest: escenario `capturas` (11 checks) y `sala` actualizado (los jugadores suben captura antes de empezar). 26/26 OK.
 - `npm run eval:extraction` listo; **no se corrió**: no hay fixtures ni credencial en este entorno. Tampoco se pudo hacer una llamada real a la API: la forma del request (fallbacks + structured outputs + imágenes) solo está verificada contra los tipos del SDK y el mock.
+
+### 2026-10-31 — Fase 3 (eval real)
+- El usuario aportó 5 capturas (Spotify con/sin encabezado, YT Music con/sin encabezado, DMs de Instagram como no-playlist); `expected.json` armados por Claude y revisados por el usuario. Imágenes fuera de git.
+- Ajustes de prompt antes de medir: excluir mini-reproductor y badges. El eval tolera `...` ≡ `…`.
+- Resultado: Opus 5.5 y Haiku 5.5 → 5/5 clasificación, 100 % recall y precisión. Haiku 3 corridas estables, ~2 s por captura, US$0,002 las 5. Pares reales vía `evaluateExtraction`: 14 y 17 canciones → ready; par con no-playlist → invalid.
+- Default cambiado a Haiku. Instrucciones del celular piden 2 capturas (una sola con encabezado trae 4–7 canciones).
 

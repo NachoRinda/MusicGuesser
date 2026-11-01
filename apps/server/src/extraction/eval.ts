@@ -1,11 +1,11 @@
 // Extraction eval against the real Claude API (costs money; not part of `verify`).
-// Usage: npm run eval:extraction [-- <filtro>]
+// Usage: npm run eval:extraction [-- <filtro>]   (modelo: MG_EXTRACTION_MODEL=claude-haiku-5-5 npm run eval:extraction)
 // Each fixtures/screenshots/<name>.{png,jpg,jpeg,webp} needs <name>.expected.json: { "isPlaylist": boolean, "tracks": [{ "title", "artist" }] }.
 import { readdirSync, readFileSync, existsSync } from "node:fs";
 import path from "node:path";
 import { MAX_SCREENSHOT_BYTES, type ScreenshotMediaType, type Track } from "@mg/shared";
 import { loadRootEnv } from "../env.js";
-import { ClaudeExtractor, EXTRACTION_MODEL } from "./ClaudeExtractor.js";
+import { ClaudeExtractor, DEFAULT_EXTRACTION_MODEL } from "./ClaudeExtractor.js";
 import { trackKey as appTrackKey } from "./evaluate.js";
 
 /** The app's comparison, plus "..." ≡ "…" for titles cut off on screen (only the eval needs this). */
@@ -16,6 +16,12 @@ loadRootEnv();
 
 const DIR = "fixtures/screenshots";
 const GOALS = { recall: 0.9, precision: 0.95 };
+/** US$ per million tokens (input, output), for the cost estimate. */
+const PRICES: Record<string, [number, number]> = {
+  "claude-opus-5-5": [4, 20],
+  "claude-sonnet-5-5": [2, 10],
+  "claude-haiku-5-5": [0.1, 0.5],
+};
 const MEDIA: Record<string, ScreenshotMediaType> = {
   ".png": "image/png",
   ".jpg": "image/jpeg",
@@ -37,7 +43,9 @@ if (files.length === 0) {
   process.exit(1);
 }
 
-const extractor = new ClaudeExtractor();
+const extractor = new ClaudeExtractor({ model: process.env.MG_EXTRACTION_MODEL || DEFAULT_EXTRACTION_MODEL });
+let inputTokens = 0;
+let outputTokens = 0;
 const rows: { file: string; classOk: boolean; recall: number | null; precision: number | null; note: string }[] = [];
 
 for (const file of files) {
@@ -61,6 +69,11 @@ for (const file of files) {
     let recall: number | null = null;
     let precision: number | null = null;
     const notes: string[] = [`${((Date.now() - t0) / 1000).toFixed(1)} s`];
+    const usage = extractor.lastUsage;
+    if (usage) {
+      inputTokens += usage.input_tokens + (usage.cache_creation_input_tokens ?? 0) + (usage.cache_read_input_tokens ?? 0);
+      outputTokens += usage.output_tokens;
+    }
     if (expected.isPlaylist) {
       const want = new Set(expected.tracks.map(trackKey));
       const got = new Set(reading!.tracks.map(trackKey));
@@ -79,7 +92,7 @@ for (const file of files) {
 }
 
 const pct = (x: number | null) => (x === null ? "  —  " : `${(x * 100).toFixed(0).padStart(4)}%`);
-console.log(`\nModelo: ${EXTRACTION_MODEL}\n`);
+console.log(`\nModelo: ${extractor.model}\n`);
 for (const r of rows) {
   console.log(`${r.classOk ? "✅" : "❌"} ${r.file}  recall ${pct(r.recall)}  precisión ${pct(r.precision)}  ${r.note}`);
 }
@@ -92,6 +105,13 @@ console.log(
   `\nClasificación: ${rows.filter((r) => r.classOk).length}/${rows.length}` +
     `  ·  recall prom. ${pct(recall)} (meta ${GOALS.recall * 100}%)  ·  precisión prom. ${pct(precision)} (meta ${GOALS.precision * 100}%)`,
 );
+const price = PRICES[extractor.model];
+if (price && rows.length) {
+  const cost = (inputTokens * price[0] + outputTokens * price[1]) / 1e6;
+  console.log(
+    `Tokens: ${inputTokens} entrada / ${outputTokens} salida · costo ≈ US$${cost.toFixed(4)} (≈ US$${(cost / rows.length).toFixed(4)} por captura)`,
+  );
+}
 const pass = classAll && (recall ?? 0) >= GOALS.recall && (precision ?? 0) >= GOALS.precision;
 console.log(pass ? "META CUMPLIDA" : "META NO CUMPLIDA");
 process.exit(pass ? 0 : 1);

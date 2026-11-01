@@ -1,0 +1,45 @@
+{
+  "isPlaylist": true,
+  "tracks": [
+    {
+      "title": "Basket Case",
+      "artist": "Green Day"
+    },
+    {
+      "title": "遥か彼方",
+      "artist": "ASIAN KUNG-FU GENERATION"
+    },
+    {
+      "title": "シルエット",
+      "artist": "KANA-BOON"
+    },
+    {
+      "title": "ポラリス",
+      "artist": "BLUE ENCOUNT"
+    },
+    {
+      "title": "THE DAY",
+      "artist": "PornoGraffitti"
+    },
+    {
+      "title": "Dani California",
+      "artist": "Red Hot Chili Peppers"
+    },
+    {
+      "title": "Shout Baby",
+      "artist": "Ryokuoushoku Shakai"
+    },
+    {
+      "title": "GO!!!",
+      "artist": "FLOW"
+    },
+    {
+      "title": "Creep",
+      "artist": "Radiohead"
+    },
+    {
+      "title": "Wonderwall - Remastered",
+      "artist": "Oasis"
+    }
+  ]
+}
