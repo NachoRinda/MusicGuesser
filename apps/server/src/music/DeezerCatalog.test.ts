@@ -85,8 +85,9 @@ describe("DeezerCatalog", () => {
     const empty = fetchReturning([]);
     const catalog = new DeezerCatalog({ fetch: empty });
     await catalog.lookup({ title: "X", artist: "Y" });
+    const calls = empty.mock.calls.length;
     await catalog.lookup({ title: "x", artist: "y" });
-    expect(empty).toHaveBeenCalledTimes(1);
+    expect(empty).toHaveBeenCalledTimes(calls);
 
     const found = fetchReturning([hit({ title: "X", artist: "Y" })]);
     const c2 = new DeezerCatalog({ fetch: found });
@@ -101,5 +102,43 @@ describe("DeezerCatalog", () => {
     await catalog.lookup({ title: "X", artist: "Y" });
     await catalog.lookup({ title: "X", artist: "Y" });
     expect(fetch).toHaveBeenCalledTimes(2);
+  });
+
+  it("falls back to simpler queries when the full one finds nothing (Deezer needs every word to match)", async () => {
+    const queries: string[] = [];
+    const fetch = vi.fn(async (url: string) => {
+      const q = new URL(url).searchParams.get("q")!;
+      queries.push(q);
+      const data = q === "Santaferia Haciendo Nada" ? [hit({ title: "Haciendo Nada", artist: "Santaferia" })] : [];
+      return new Response(JSON.stringify({ data }));
+    });
+    const media = await new DeezerCatalog({ fetch }).lookup({ title: "Haciendo Nada", artist: "Santaferia, Chico Trujillo" });
+    expect(media?.previewUrl).toBe("https://cdn/Haciendo Nada.mp3");
+    expect(queries).toEqual(["Santaferia, Chico Trujillo Haciendo Nada", "Santaferia Haciendo Nada"]);
+  });
+
+  it("last resort: searches the bare title and keeps a hit by the same artist", async () => {
+    const queries: string[] = [];
+    const fetch = vi.fn(async (url: string) => {
+      const q = new URL(url).searchParams.get("q")!;
+      queries.push(q);
+      const data = q === "Nothing on You" ? [hit({ title: "Nothing on You", artist: "Otro" }), hit({ title: "Nothin' on You", artist: "B.o.B" })] : [];
+      return new Response(JSON.stringify({ data }));
+    });
+    const media = await new DeezerCatalog({ fetch }).lookup({ title: "Nothing on You (feat. Bruno Mars)", artist: "BoB" });
+    // "BoB" doesn't match "B.o.B" textually unless punctuation is ignored inside words.
+    expect(queries).toEqual([
+      "BoB Nothing on You (feat. Bruno Mars)",
+      "BoB Nothing on You",
+      "Nothing on You",
+    ]);
+    expect(media?.previewUrl).toBe("https://cdn/Nothin' on You.mp3");
+  });
+
+  it("logs a miss with the track text and the queries tried (no secrets, no images)", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    await new DeezerCatalog({ fetch: fetchReturning([]) }).lookup({ title: "Haciendo Nada", artist: "Santaferia" });
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('"Haciendo Nada" — "Santaferia"'));
+    warn.mockRestore();
   });
 });

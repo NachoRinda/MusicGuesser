@@ -82,6 +82,7 @@ Primera partida jugable de punta a punta: con ≥ 3 jugadores listos, el host el
 ## Cambios al implementar
 - **La ronda no espera a Deezer**: arranca enseguida y el audio (y la tapa) aparecen en cuanto llega la búsqueda (≤ 4 s). Así ninguna ronda se demora y no hace falta una etapa "preparando".
 - La búsqueda avanzada de Deezer (`artist:"…" track:"…"`) no devolvió resultados en las pruebas reales; se usa la búsqueda común `q=<artista> <título>` y se filtra por coincidencia. Verificado en vivo: Bad Bunny, Bizarrap (título cortado con "…" y crédito "Bizarrap, Shakira"), Miley Cyrus y Soda Stereo encontradas; una inexistente → `null`.
+- **Búsquedas de respaldo en Deezer** (tras la prueba manual): Deezer solo devuelve resultados que contienen *todas* las palabras de la búsqueda, así que una palabra de más ("Santaferia, Chico Trujillo Haciendo Nada") da 0 resultados aunque la canción exista. Se prueba en orden: texto completo → artista principal + título sin paréntesis/feat. → título solo (filtrando por artista). Artistas comparados sin espacios ni puntuación ("BoB" = "B.o.B"). Cada canción sin preview se loguea con su texto y las búsquedas probadas (solo título/artista, nunca imágenes).
 - Error extra `INVALID_SETTINGS` (rondas fuera de 5/10/15).
 - `reveal.points` (puntos de la ronda por jugador) para mostrar "+N" en el ranking.
 - `GET /health` informa también `catalog: "fake" | "deezer"`; el playtest levanta el server con `MG_CATALOG=fake` (sin red).
