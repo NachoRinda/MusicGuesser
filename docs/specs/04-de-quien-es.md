@@ -1,6 +1,6 @@
 # Spec 04 — Modo "¿De quién es?" + audio Deezer
 
-**Estado: aprobado** (2026-10-31). Implementado 2026-11-01; falta la prueba manual con celular y audio real. Cambios del usuario al aprobar: no se excluye ninguna canción (aunque la tengan todos, hay que jugársela por otro); la revelación tiene 3 etapas de 10 s (dueños → votos → ranking). Confirmados: título/artista visibles desde el principio, 5/10/15 rondas, voto definitivo, puntaje propuesto.
+**Estado: aprobado** (2026-10-31). Implementado y cerrado 2026-11-01 (tag `fase-4`). Cambios del usuario al aprobar: no se excluye ninguna canción (aunque la tengan todos, hay que jugársela por otro); la revelación tiene 3 etapas de 10 s (dueños → votos → ranking). Confirmados: título/artista visibles desde el principio, 5/10/15 rondas, voto definitivo, puntaje propuesto.
 
 ## Objetivo
 Primera partida jugable de punta a punta: con ≥ 3 jugadores listos, el host elige cuántas rondas y empieza; en cada ronda la TV muestra y hace sonar (preview de 30 s de Deezer) una canción de alguno de los jugadores, todos votan desde el celular de quién es, se revela quién la escucha y quién votó a quién, se suman puntos, y al final hay ranking y "Jugar otra vez".
@@ -102,7 +102,7 @@ Primera partida jugable de punta a punta: con ≥ 3 jugadores listos, el host el
 - [x] `DeezerCatalog`: arma la URL, elige el resultado correcto, `null` ante error/timeout/sin match (fetch mockeado). Una búsqueda real verificada a mano.
 - [x] Integración por sockets: partida completa de 3 jugadores con etapas cortas (400/60 ms, timers reales); el estado de la pregunta no filtra dueños ni votos; `player:myVote` solo al votante; reconexión a mitad de ronda.
 - [x] Escenario `de-quien-es` en `npm run playtest`: TV + 3 celulares juegan una partida de 5 rondas (votos, revelación, ranking final, jugar otra vez).
-- [ ] Prueba manual con el celular del usuario y audio real de Deezer en la TV.
+- [x] Prueba manual con el celular del usuario y audio real de Deezer en la TV (2026-11-01).
 
 ## Fuera de alcance
 Modo "¿Cuántos la tienen?" y matching difuso (fase 5), animaciones y pulido visual, deploy, volumen/controles de audio, elegir qué parte de la canción suena.

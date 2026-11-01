@@ -1,10 +1,10 @@
 # Progreso
 
 ## Estado actual
-- **Fase 4 — "¿De quién es?" + audio Deezer: implementada** (2026-11-01), falta la prueba manual del usuario (celular + audio real en la TV) para cerrarla con tag `fase-4`. Tests 138, playtest 40/40.
+- **Fase 4 — "¿De quién es?" + audio Deezer: completa** (2026-11-01), tag `fase-4`. Tests 138, playtest 40/40, prueba manual del usuario OK (celular + audio real).
 - Fase 3 — Extracción de capturas: completa (2026-10-31), tag `fase-3`.
 - **Playtest automatizado**: `npm run playtest` (escenarios `sala`, `capturas` y `de-quien-es`). Usa `MG_EXTRACTOR=fake` y `MG_CATALOG=fake`.
-- **Próximo paso**: prueba manual de la fase 4 (`npm run dev`, TV en la compu con sonido, celular del usuario + 2 jugadores más en pestañas o celulares), tag `fase-4`, y después spec 05. Pendiente opcional: un fixture de Apple Music.
+- **Próximo paso**: decidir con el usuario si el feedback de diseño de la fase 4 (ver "Feedback pendiente") se hace ya o en la fase 6; después spec 05. Pendiente opcional: un fixture de Apple Music.
 
 ## Fases
 | # | Fase | Estado |
@@ -12,9 +12,15 @@
 | 1 | Scaffolding, CLAUDE.md, GAME_DESIGN.md, hook de verificación | ✅ |
 | 2 | Sala en tiempo real con datos falsos | ✅ |
 | 3 | Extracción de capturas (Claude vision) | ✅ |
-| 4 | Modo "¿De quién es?" + audio Deezer | 🟡 falta prueba manual |
+| 4 | Modo "¿De quién es?" + audio Deezer | ✅ |
 | 5 | Modo "¿Cuántos la tienen?" + matching | — |
 | 6 | Pulido y deploy | — |
+
+## Feedback pendiente (prueba manual fase 4, 2026-11-01)
+- TV: las 3 etapas de revelación deben diferenciarse más visualmente (hoy solo cambia el título).
+- Celular: el resultado tiene que verse también cuando fallás, en rojo. Estilo Kahoot: pantalla verde si acertaste, roja si no.
+- TV: un timer por etapa, no uno global arriba (hoy no se entiende a qué corresponde).
+- Música de tensión de uso libre cuando termina el preview de Deezer (30 s), para que no quede en silencio.
 
 ## Decisiones
 - **Fuente de datos = capturas + visión**, no APIs de streaming. Spotify Dev Mode limita a 5 usuarios y desde feb-2026 no devuelve canciones de playlists ajenas; Last.fm solo registra desde que se conecta (exige preparación); elegir canciones a mano rompe la autenticidad.
