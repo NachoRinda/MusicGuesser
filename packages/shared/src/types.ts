@@ -15,4 +15,6 @@ export interface HealthResponse {
   status: "ok";
   /** Which screenshot reader is active: the playtest refuses to run against the real one. */
   extractor: "fake" | "claude";
+  /** Where round audio comes from: the playtest uses the fake (no network). */
+  catalog: "fake" | "deezer";
 }

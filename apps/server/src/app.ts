@@ -6,6 +6,8 @@ import type { Extractor } from "./extraction/Extractor.js";
 import { MAX_SCREENSHOT_BYTES, MAX_SCREENSHOTS_PER_UPLOAD } from "@mg/shared";
 import { FakeExtractor } from "./extraction/FakeExtractor.js";
 import { createExtractorFromEnv } from "./extraction/fromEnv.js";
+import { createCatalogFromEnv } from "./music/fromEnv.js";
+import type { MusicCatalog } from "./music/MusicCatalog.js";
 import { detectLanHost } from "./network.js";
 import { RoomStore } from "./rooms/RoomStore.js";
 import { registerRoomHandlers, type AppIo } from "./rooms/socketHandlers.js";
@@ -17,6 +19,8 @@ export interface AppServerOptions {
   /** Reads screenshots; defaults to the one chosen by env vars (see `createExtractorFromEnv`). */
   extractor?: Extractor;
   extractionTimeoutMs?: number;
+  /** Finds audio previews; defaults to Deezer (`MG_CATALOG=fake` for none). */
+  catalog?: MusicCatalog;
 }
 
 /** Builds the HTTP + Socket.IO server without listening, so tests can start it on a random port. */
@@ -25,11 +29,14 @@ export function createAppServer({
   sweepIntervalMs = 60_000,
   extractor = createExtractorFromEnv(),
   extractionTimeoutMs = 60_000,
+  catalog = createCatalogFromEnv(),
 }: AppServerOptions = {}) {
   const app = express();
 
   app.get("/health", (_req, res) => {
-    const body: HealthResponse = { status: "ok", extractor: extractor instanceof FakeExtractor ? "fake" : "claude" };
+    const body: HealthResponse = { status: "ok", extractor: extractor instanceof FakeExtractor ? "fake" : "claude",
+      catalog: catalog.kind,
+    };
     res.json(body);
   });
 
@@ -44,7 +51,7 @@ export function createAppServer({
     // Room for a full upload (2 screenshots) plus framing overhead.
     maxHttpBufferSize: MAX_SCREENSHOTS_PER_UPLOAD * MAX_SCREENSHOT_BYTES + 1024 * 1024,
   });
-  registerRoomHandlers(io, store, { extractor, extractionTimeoutMs });
+  registerRoomHandlers(io, store, { extractor, extractionTimeoutMs, catalog });
 
   const sweeper = setInterval(() => store.sweep(), sweepIntervalMs);
   sweeper.unref();

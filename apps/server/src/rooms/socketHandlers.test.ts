@@ -13,6 +13,7 @@ import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest
 import { createAppServer } from "../app.js";
 import type { Extractor } from "../extraction/Extractor.js";
 import { FakeExtractor } from "../extraction/FakeExtractor.js";
+import { FakeCatalog } from "../music/FakeCatalog.js";
 
 type Client = Socket<ServerToClientEvents, ClientToServerEvents>;
 
@@ -29,7 +30,7 @@ type TestClient = Client & { states: RoomState[]; tracks: PlayerTracks[] };
 const png = (content = "screenshot") => ({ mediaType: "image/png" as const, data: new TextEncoder().encode(content) });
 
 describe("room sockets", () => {
-  const { httpServer, io } = createAppServer({ extractor, extractionTimeoutMs: 300 });
+  const { httpServer, io } = createAppServer({ extractor, extractionTimeoutMs: 300, catalog: new FakeCatalog() });
   let url = "";
   const clients: Client[] = [];
 

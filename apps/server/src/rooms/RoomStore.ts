@@ -1,20 +1,29 @@
 import { randomUUID } from "node:crypto";
 import {
+  DEFAULT_ROUNDS,
   MAX_NAME_LENGTH,
+  QUESTION_MS,
+  REVEAL_STAGE_MS,
+  ROUND_OPTIONS,
   MIN_PLAYERS_TO_START,
   ROOM_CODE_ALPHABET,
   ROOM_CODE_LENGTH,
   type ExtractionProblem,
   type HostSession,
+  type MyVote,
   type Player,
   type PlayerSession,
   type PlayerStatus,
   type PlayerTracks,
   type Result,
   type RoomPhase,
+  type RoomSettings,
   type RoomState,
+  type RoundsSetting,
 } from "@mg/shared";
 import type { ExtractionOutcome } from "../extraction/evaluate.js";
+import { Game } from "../game/Game.js";
+import { pickRounds } from "../game/pickRounds.js";
 
 /** A room is deleted after its host has been away this long. */
 export const HOST_TTL_MS = 30 * 60 * 1000;
@@ -39,11 +48,17 @@ interface Room {
   hostConnections: number;
   /** When the last host socket left (or the room was created); null while the host is connected. */
   hostAwaySince: number | null;
+  settings: RoomSettings;
+  /** The game in progress or just finished; undefined in the lobby. */
+  game?: Game;
 }
 
 export interface RoomStoreOptions {
   now?: () => number;
   random?: () => number;
+  /** Stage lengths (tests shorten them). */
+  questionMs?: number;
+  revealStageMs?: number;
 }
 
 
@@ -52,10 +67,19 @@ export class RoomStore {
   private readonly rooms = new Map<string, Room>();
   private readonly now: () => number;
   private readonly random: () => number;
+  private readonly questionMs: number;
+  private readonly revealStageMs: number;
 
-  constructor({ now = Date.now, random = Math.random }: RoomStoreOptions = {}) {
+  constructor({
+    now = Date.now,
+    random = Math.random,
+    questionMs = QUESTION_MS,
+    revealStageMs = REVEAL_STAGE_MS,
+  }: RoomStoreOptions = {}) {
     this.now = now;
     this.random = random;
+    this.questionMs = questionMs;
+    this.revealStageMs = revealStageMs;
   }
 
   createRoom(): HostSession {
@@ -66,6 +90,7 @@ export class RoomStore {
       players: [],
       hostConnections: 0,
       hostAwaySince: this.now(),
+      settings: { rounds: DEFAULT_ROUNDS },
     };
     this.rooms.set(room.code, room);
     return { code: room.code, hostToken: room.hostToken };
@@ -130,8 +155,21 @@ export class RoomStore {
   }
 
   playerDisconnected(code: string, playerId: string): void {
-    const player = this.findPlayer(code, playerId);
-    if (player && player.connections > 0) player.connections--;
+    const room = this.room(code);
+    const player = room?.players.find((p) => p.id === playerId);
+    if (!room || !player || player.connections === 0) return;
+    player.connections--;
+    // The last voter may be the one who left: don't wait for them.
+    if (player.connections === 0) this.closeQuestionIfAllVoted(room);
+  }
+
+  setRounds(code: string, rounds: RoundsSetting): Result<object> {
+    const room = this.room(code);
+    if (!room) return { ok: false, error: "ROOM_NOT_FOUND" };
+    if (room.phase !== "lobby") return { ok: false, error: "GAME_ALREADY_STARTED" };
+    if (!ROUND_OPTIONS.includes(rounds)) return { ok: false, error: "INVALID_SETTINGS" };
+    room.settings = { rounds };
+    return { ok: true };
   }
 
   start(code: string): Result<object> {
@@ -143,7 +181,75 @@ export class RoomStore {
     room.phase = "playing";
     // Ready players play even if momentarily disconnected; the rest sit this game out.
     for (const p of room.players) p.inGame = p.status === "ready";
+    const inGame = room.players.filter((p) => p.inGame);
+    room.game = new Game({
+      rounds: pickRounds(inGame, room.settings.rounds, this.random),
+      players: inGame.map((p) => p.id),
+      now: this.now,
+      questionMs: this.questionMs,
+      revealStageMs: this.revealStageMs,
+    });
     return { ok: true };
+  }
+
+  getGame(code: string): Game | undefined {
+    return this.room(code)?.game;
+  }
+
+  vote(code: string, playerId: string, targetId: string): Result<object> {
+    const room = this.room(code);
+    if (!room) return { ok: false, error: "ROOM_NOT_FOUND" };
+    if (room.phase !== "playing" || !room.game) return { ok: false, error: "NOT_PLAYING" };
+    const res = room.game.vote(playerId, targetId);
+    if (res.ok) this.closeQuestionIfAllVoted(room);
+    return res;
+  }
+
+  getMyVote(code: string, playerId: string): MyVote | undefined {
+    return this.room(code)?.game?.myVote(playerId);
+  }
+
+  /** Host skips to the next stage. */
+  next(code: string): Result<object> {
+    const room = this.room(code);
+    if (!room) return { ok: false, error: "ROOM_NOT_FOUND" };
+    if (room.phase !== "playing" || !room.game) return { ok: false, error: "NOT_PLAYING" };
+    room.game.advance();
+    this.syncPhase(room);
+    return { ok: true };
+  }
+
+  /** A stage timer fired: advances only if `game` is still the room's game and still on stage `seq`. */
+  advanceIf(code: string, game: Game, seq: number): boolean {
+    const room = this.room(code);
+    if (!room || room.game !== game || !game.advanceIf(seq)) return false;
+    this.syncPhase(room);
+    return true;
+  }
+
+  /** From the final ranking back to the lobby with the same players, tracks and statuses. */
+  playAgain(code: string): Result<object> {
+    const room = this.room(code);
+    if (!room) return { ok: false, error: "ROOM_NOT_FOUND" };
+    if (room.phase !== "finished") return { ok: false, error: "NOT_PLAYING" };
+    room.phase = "lobby";
+    delete room.game;
+    for (const p of room.players) p.inGame = false;
+    return { ok: true };
+  }
+
+  private closeQuestionIfAllVoted(room: Room): void {
+    const game = room.game;
+    if (room.phase !== "playing" || !game || game.currentStage !== "question") return;
+    const connected = new Set(room.players.filter((p) => p.connections > 0).map((p) => p.id));
+    if (game.allVoted(connected)) {
+      game.advance();
+      this.syncPhase(room);
+    }
+  }
+
+  private syncPhase(room: Room): void {
+    if (room.game?.finished) room.phase = "finished";
   }
 
   /** Marks a player as having an upload being read; their previous tracks are discarded. */
@@ -193,6 +299,8 @@ export class RoomStore {
     return {
       code: room.code,
       phase: room.phase,
+      settings: room.settings,
+      ...(room.game && { game: room.game.view() }),
       players: room.players.map((p) => ({
         id: p.id,
         name: p.name,

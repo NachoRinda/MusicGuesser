@@ -2,6 +2,9 @@ import { FAKE_TRACK_POOL, ROOM_CODE_ALPHABET, type HostSession, type Track } fro
 import { beforeEach, describe, expect, it } from "vitest";
 import { HOST_TTL_MS, RoomStore } from "./RoomStore.js";
 
+const QUESTION = 45_000;
+const STAGE = 10_000;
+
 function ok<T>(res: { ok: true } & T): T;
 function ok<T>(res: ({ ok: true } & T) | { ok: false; error: string }): T;
 function ok<T>(res: ({ ok: true } & T) | { ok: false; error: string }): T {
@@ -77,6 +80,7 @@ describe("RoomStore", () => {
       expect(store.getState(host.code)).toEqual({
         code: host.code,
         phase: "lobby",
+        settings: { rounds: 10 },
         players: [{ id: playerId, name: "Ana", ...lobbyPlayer }],
       });
     });
@@ -338,6 +342,110 @@ describe("RoomStore", () => {
         "status",
         "trackCount",
       ]);
+    });
+  });
+  describe("game", () => {
+    function startGame(rounds?: 5 | 10 | 15) {
+      const players = ["Ana", "Beto", "Caro"].map((n) => joinReady(n));
+      if (rounds) ok(store.setRounds(host.code, rounds));
+      ok(store.start(host.code));
+      return players;
+    }
+    const game = () => store.getState(host.code)!.game!;
+
+    it("settings: 5/10/15 rounds, default 10, only in the lobby", () => {
+      expect(store.getState(host.code)!.settings).toEqual({ rounds: 10 });
+      expect(store.setRounds(host.code, 7 as 5)).toEqual({ ok: false, error: "INVALID_SETTINGS" });
+      ok(store.setRounds(host.code, 5));
+      expect(store.getState(host.code)!.settings).toEqual({ rounds: 5 });
+      startGame();
+      expect(store.setRounds(host.code, 10)).toEqual({ ok: false, error: "GAME_ALREADY_STARTED" });
+    });
+
+    it("start creates a game with the chosen rounds, capped at the distinct tracks", () => {
+      startGame(5);
+      expect(game()).toMatchObject({ round: 1, totalRounds: 5, stage: "question", remainingMs: QUESTION });
+      expect(store.getState(host.code)!.phase).toBe("playing");
+    });
+
+    it("plays only with tracks of players in the game", () => {
+      const [a] = startGame(15);
+      // Everyone has the same 10 tracks → only 10 rounds.
+      expect(game().totalRounds).toBe(10);
+      expect(store.getGame(host.code)!.players).toHaveLength(3);
+      expect(store.getGame(host.code)!.players).toContain(a!.playerId);
+    });
+
+    it("votes go through the game; the question closes once every connected player voted", () => {
+      const [a, b, c] = startGame();
+      expect(store.vote(host.code, a!.playerId, a!.playerId)).toEqual({ ok: false, error: "INVALID_VOTE" });
+      ok(store.vote(host.code, a!.playerId, b!.playerId));
+      expect(store.getMyVote(host.code, a!.playerId)).toEqual({ round: 1, targetId: b!.playerId });
+      ok(store.vote(host.code, b!.playerId, c!.playerId));
+      expect(game().stage).toBe("question");
+      ok(store.vote(host.code, c!.playerId, a!.playerId));
+      expect(game().stage).toBe("owners");
+    });
+
+    it("a player who disconnects without voting doesn't block the close", () => {
+      const [a, b, c] = startGame();
+      ok(store.vote(host.code, a!.playerId, b!.playerId));
+      ok(store.vote(host.code, b!.playerId, a!.playerId));
+      store.playerDisconnected(host.code, c!.playerId);
+      expect(game().stage).toBe("owners");
+    });
+
+    it("rejects votes from players out of the game and outside a game", () => {
+      expect(store.vote(host.code, "x", "y")).toEqual({ ok: false, error: "NOT_PLAYING" });
+      const d = joinConnected("Dani"); // not ready → out of the game
+      startGame();
+      expect(store.vote(host.code, d.playerId, "y")).toEqual({ ok: false, error: "NOT_IN_GAME" });
+    });
+
+    it("host next / timers advance through the stages; stale timers do nothing", () => {
+      startGame(5);
+      const { seq } = store.getGame(host.code)!.deadline()!;
+      ok(store.next(host.code));
+      expect(game().stage).toBe("owners");
+      expect(store.advanceIf(host.code, store.getGame(host.code)!, seq)).toBe(false);
+      clock += STAGE;
+      expect(store.advanceIf(host.code, store.getGame(host.code)!, seq + 1)).toBe(true);
+      expect(game().stage).toBe("votes");
+    });
+
+    it("finishes after the last round; play again goes back to the lobby keeping players and tracks", () => {
+      const [a] = startGame(5);
+      for (let i = 0; i < 5 * 4; i++) ok(store.next(host.code));
+      const finished = store.getState(host.code)!;
+      expect(finished.phase).toBe("finished");
+      expect(finished.game?.scores).toHaveLength(3);
+      expect(store.next(host.code)).toEqual({ ok: false, error: "NOT_PLAYING" });
+      expect(store.join(host.code, "Tarde")).toEqual({ ok: false, error: "GAME_ALREADY_STARTED" });
+
+      ok(store.playAgain(host.code));
+      const lobby = store.getState(host.code)!;
+      expect(lobby.phase).toBe("lobby");
+      expect(lobby.game).toBeUndefined();
+      expect(lobby.players.every((p) => p.status === "ready" && !p.inGame && p.trackCount === 10)).toBe(true);
+      expect(store.getPlayerTracks(host.code, a!.playerId)?.tracks).toHaveLength(10);
+      ok(store.join(host.code, "Tarde"));
+      // A new game starts from zero.
+      ok(store.start(host.code));
+      expect(game().scores.every((s) => s.score === 0)).toBe(true);
+    });
+
+    it("play again only from finished", () => {
+      expect(store.playAgain(host.code)).toEqual({ ok: false, error: "NOT_PLAYING" });
+      startGame();
+      expect(store.playAgain(host.code)).toEqual({ ok: false, error: "NOT_PLAYING" });
+    });
+
+    it("the question state never includes owners nor vote targets", () => {
+      const [a, b] = startGame();
+      ok(store.vote(host.code, a!.playerId, b!.playerId));
+      const json = JSON.stringify(store.getState(host.code));
+      expect(json).not.toContain("owners");
+      expect(json).not.toContain("targetId");
     });
   });
 });

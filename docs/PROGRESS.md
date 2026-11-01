@@ -3,7 +3,7 @@
 ## Estado actual
 - **Fase 3 — Extracción de capturas: completa** (2026-10-31), tag `fase-3`. Tests (89), playtest (26/26), eval real (100 % con Haiku 5.5) y prueba manual con celular OK.
 - **Playtest automatizado**: `npm run playtest` (escenarios `sala` y `capturas`). Usa `MG_EXTRACTOR=fake`.
-- **Próximo paso**: escribir spec 04 (modo "¿De quién es?" + audio Deezer) y que el usuario lo apruebe. Pendiente opcional: un fixture de Apple Music.
+- **Próximo paso**: spec 04 escrito como borrador (`docs/specs/04-de-quien-es.md`), falta la aprobación del usuario para implementar. Pendiente opcional: un fixture de Apple Music.
 
 ## Fases
 | # | Fase | Estado |
