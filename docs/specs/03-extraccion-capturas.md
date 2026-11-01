@@ -1,6 +1,6 @@
 # Spec 03 — Extracción de capturas (Claude vision)
 
-**Estado: aprobado** (2026-10-31). Implementado 2026-10-31 salvo la prueba manual (ver criterios); contrato ajustado al implementar (ver "Cambios al implementar"). Decisión al aprobar: se acepta **cualquier playlist** (no solo las de "más escuchadas"); solo se rechaza lo que no es una playlist.
+**Estado: aprobado** (2026-10-31). Implementado y cerrado 2026-10-31 (tag `fase-3`); contrato ajustado al implementar (ver "Cambios al implementar"). Decisión al aprobar: se acepta **cualquier playlist** (no solo las de "más escuchadas"); solo se rechaza lo que no es una playlist.
 
 ## Objetivo
 Reemplazar las canciones falsas por las reales: cada jugador sube 1–2 capturas de su playlist autogenerada de "más escuchadas", un modelo con visión extrae título y artista, y el jugador queda **listo** cuando hay al menos 10 canciones válidas. La TV muestra quién está listo y solo deja empezar con ≥ 3 jugadores listos.
@@ -81,7 +81,7 @@ Reemplazar las canciones falsas por las reales: cada jugador sube 1–2 capturas
 - [x] Ninguna ruta de código escribe imágenes a disco ni las loguea (revisión + test que espía `console`).
 - [x] Escenario `capturas` en `npm run playtest`: 3 celulares suben capturas (uno inválido y luego reintenta), la TV ve los estados y empieza.
 - [x] Eval con la API real sobre los fixtures cumple la meta (5 fixtures: Spotify ×2, YT Music ×2, 1 no-playlist; 100 % con Opus 5.5 y Haiku 5.5).
-- [ ] Prueba manual: subir tu captura real desde tu celular. *(pendiente)*
+- [x] Prueba manual: el usuario subió capturas reales desde su celular y quedó listo (2026-10-31).
 
 ## Fuera de alcance
 Modos de juego, audio Deezer, matching de canciones entre jugadores (fase 5), pulido visual, deploy.

@@ -1,16 +1,16 @@
 # Progreso
 
 ## Estado actual
-- **Fase 3 — Extracción de capturas: implementada, sin cerrar** (2026-10-31). Tests (89), playtest (26/26) y eval real (100 % con Haiku 5.5) en verde. **Falta para el tag `fase-3`**: la prueba manual con un celular.
+- **Fase 3 — Extracción de capturas: completa** (2026-10-31), tag `fase-3`. Tests (89), playtest (26/26), eval real (100 % con Haiku 5.5) y prueba manual con celular OK.
 - **Playtest automatizado**: `npm run playtest` (escenarios `sala` y `capturas`). Usa `MG_EXTRACTOR=fake`.
-- **Próximo paso**: prueba manual (subir 2 capturas reales desde el celular con `npm run dev` y la key en `.env`), tag `fase-3` y spec 04. Falta un fixture de Apple Music (el usuario no tiene; opcional).
+- **Próximo paso**: escribir spec 04 (modo "¿De quién es?" + audio Deezer) y que el usuario lo apruebe. Pendiente opcional: un fixture de Apple Music.
 
 ## Fases
 | # | Fase | Estado |
 |---|---|---|
 | 1 | Scaffolding, CLAUDE.md, GAME_DESIGN.md, hook de verificación | ✅ |
 | 2 | Sala en tiempo real con datos falsos | ✅ |
-| 3 | Extracción de capturas (Claude vision) | 🟡 falta prueba manual |
+| 3 | Extracción de capturas (Claude vision) | ✅ |
 | 4 | Modo "¿De quién es?" + audio Deezer | — |
 | 5 | Modo "¿Cuántos la tienen?" + matching | — |
 | 6 | Pulido y deploy | — |
@@ -62,4 +62,4 @@
 - Ajustes de prompt antes de medir: excluir mini-reproductor y badges. El eval tolera `...` ≡ `…`.
 - Resultado: Opus 5.5 y Haiku 5.5 → 5/5 clasificación, 100 % recall y precisión. Haiku 3 corridas estables, ~2 s por captura, US$0,002 las 5. Pares reales vía `evaluateExtraction`: 14 y 17 canciones → ready; par con no-playlist → invalid.
 - Default cambiado a Haiku. Instrucciones del celular piden 2 capturas (una sola con encabezado trae 4–7 canciones).
-
+- Prueba manual: el usuario subió capturas reales desde su celular por WiFi → lista leída y "listo" en la TV. Fase cerrada.
