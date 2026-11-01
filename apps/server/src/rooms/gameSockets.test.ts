@@ -19,6 +19,8 @@ type Client = Socket<ServerToClientEvents, ClientToServerEvents> & {
   states: RoomState[];
   votes: MyVote[];
   tracks: PlayerTracks[];
+  /** Index of the first state `waitForState` hasn't consumed yet. */
+  cursor: number;
 };
 
 // Short stages so timers can be exercised for real.
@@ -54,6 +56,7 @@ describe("game sockets", () => {
     c.states = [];
     c.votes = [];
     c.tracks = [];
+    c.cursor = 0;
     c.on("room:state", (s) => c.states.push(s));
     c.on("player:myVote", (v) => c.votes.push(v));
     c.on("player:tracks", (t) => c.tracks.push(t));
@@ -67,19 +70,26 @@ describe("game sockets", () => {
     return res;
   }
 
-  /** Resolves with the latest state if it matches, or the next one that does. */
+  /**
+   * Resolves with the first state matching, among those received after the previous match (so
+   * fast stages that arrive together aren't missed, and an old match isn't reused).
+   */
   function waitForState(c: Client, pred: (s: RoomState) => boolean, timeoutMs = 3_000): Promise<RoomState> {
-    const last = c.states.at(-1);
-    if (last && pred(last)) return Promise.resolve(last);
     return new Promise((resolve, reject) => {
-      const timer = setTimeout(() => reject(new Error("state not reached")), timeoutMs);
-      const onState = (s: RoomState) => {
-        if (!pred(s)) return;
+      const check = () => {
+        const i = c.states.findIndex((s, idx) => idx >= c.cursor && pred(s));
+        if (i < 0) return false;
+        c.cursor = i + 1;
         clearTimeout(timer);
-        c.off("room:state", onState);
-        resolve(s);
+        c.off("room:state", check);
+        resolve(c.states[i]!);
+        return true;
       };
-      c.on("room:state", onState);
+      const timer = setTimeout(() => {
+        c.off("room:state", check);
+        reject(new Error("state not reached"));
+      }, timeoutMs);
+      if (!check()) c.on("room:state", check);
     });
   }
 
@@ -103,6 +113,7 @@ describe("game sockets", () => {
     ok(await tv.emitWithAck("host:settings", { rounds }));
     ok(await tv.emitWithAck("host:start"));
     await waitForState(tv, (s) => s.phase === "playing");
+    tv.cursor -= 1; // leave the first game state for the test to look at
     return { tv, code, players };
   }
 

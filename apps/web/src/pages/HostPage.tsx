@@ -1,6 +1,14 @@
-import { MIN_PLAYERS_TO_START, ROOM_ERROR_MESSAGES, type NetworkInfo, type RoomState } from "@mg/shared";
+import {
+  MIN_PLAYERS_TO_START,
+  ROOM_ERROR_MESSAGES,
+  ROUND_OPTIONS,
+  type NetworkInfo,
+  type RoomState,
+  type RoundsSetting,
+} from "@mg/shared";
 import QRCode from "qrcode";
 import { useEffect, useRef, useState } from "react";
+import { HostGame } from "../game/HostGame.js";
 import { createSocket, type AppSocket } from "../socket.js";
 import { HOST_TOKEN_KEY, storage } from "../storage.js";
 import { PlayerList } from "./PlayerList.js";
@@ -33,15 +41,15 @@ export function HostPage() {
     setError(res && !res.ok ? ROOM_ERROR_MESSAGES[res.error] : null);
   }
 
+  async function setRounds(rounds: RoundsSetting) {
+    const res = await socketRef.current?.emitWithAck("host:settings", { rounds });
+    setError(res && !res.ok ? ROOM_ERROR_MESSAGES[res.error] : null);
+  }
+
   if (!room) return <main className="center">Creando sala…</main>;
 
-  if (room.phase === "playing") {
-    return (
-      <main className="center">
-        <h1>¡Arrancamos!</h1>
-        <p className="muted">Juegan: {room.players.filter((p) => p.inGame).map((p) => p.name).join(", ")}</p>
-      </main>
-    );
+  if (room.phase !== "lobby" && room.game && socketRef.current) {
+    return <HostGame room={room} socket={socketRef.current} />;
   }
 
   const connected = room.players.filter((p) => p.connected).length;
@@ -59,6 +67,24 @@ export function HostPage() {
           Jugadores ({connected}) · listos: {ready}
         </h2>
         <PlayerList players={room.players} />
+        <div className="settings">
+          <p>
+            Modo: <strong>¿De quién es?</strong>
+          </p>
+          <p role="group" aria-label="Rondas">
+            Rondas:{" "}
+            {ROUND_OPTIONS.map((n) => (
+              <button
+                key={n}
+                className={room.settings.rounds === n ? "selected" : ""}
+                aria-pressed={room.settings.rounds === n}
+                onClick={() => void setRounds(n)}
+              >
+                {n}
+              </button>
+            ))}
+          </p>
+        </div>
         <button onClick={start} disabled={ready < MIN_PLAYERS_TO_START}>
           Empezar
         </button>

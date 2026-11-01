@@ -139,9 +139,10 @@ async function sala({ browser, check, shot }) {
     for (const n of ["Ana", "Beto", "Caro"]) await tv.locator(".players li", { hasText: n }).waitFor(T);
   });
 
-  await check("Empezar → TV y celulares muestran '¡Arrancamos!'", async () => {
+  await check("Empezar → TV en la ronda 1 y celulares votando", async () => {
     await startBtn.click();
-    for (const p of [tv, ana.page, beto.page, caro.page]) await p.getByText("¡Arrancamos!").waitFor(T);
+    await tv.getByText(/Ronda 1 de \d+/).waitFor(T);
+    for (const p of [ana.page, beto.page, caro.page]) await p.getByText("¿De quién es?").waitFor(T);
     await shot(tv, "sala-06-tv-arrancamos");
     await shot(ana.page, "sala-07-celular-arrancamos");
   });
@@ -154,7 +155,7 @@ async function sala({ browser, check, shot }) {
 
   await check("Recargar un celular durante la partida → vuelve al juego", async () => {
     await ana.page.reload();
-    await ana.page.getByText("¡Arrancamos!").waitFor(T);
+    await ana.page.getByText("¿De quién es?").waitFor(T);
   });
 }
 
@@ -261,15 +262,182 @@ async function capturas({ browser, check, shot }) {
 
   await check("Empezar → juegan los 3 listos; Dani queda afuera con aviso", async () => {
     await startBtn.click();
-    await tv.getByText("Juegan: Ana, Beto, Caro").waitFor(T);
-    for (const p of [ana, beto, caro]) await p.page.getByText("¡Arrancamos!").waitFor(T);
+    await tv.locator(".vote-status").waitFor(T);
+    const playing = await tv.locator(".vote-status li").allTextContents();
+    if (playing.join(",") !== "Ana,Beto,Caro") throw new Error(`juegan: ${playing.join(", ")}`);
+    for (const p of [ana, beto, caro]) await p.page.getByText("¿De quién es?").waitFor(T);
     await dani.page.getByText("La partida empezó sin vos").waitFor(T);
     if (await ana.page.getByText("La partida empezó sin vos").count()) throw new Error("Ana figura afuera");
   });
   await shot(dani.page, "capturas-07-celular-afuera");
 }
 
-const SCENARIOS = { sala, capturas };
+/** Fase 4: una partida de "¿De quién es?" de 5 rondas (spec 04). */
+async function deQuienEs({ browser, check, shot }) {
+  const tv = await (await browser.newContext({ viewport: { width: 1280, height: 800 } })).newPage();
+  await tv.goto(`${BASE}/host`);
+  const code = (await tv.locator(".code").textContent({ timeout: 5000 })).trim();
+  const NAMES = ["Ana", "Beto", "Caro"];
+
+  async function joinPhone(name, tag) {
+    const ctx = await browser.newContext({ ...devices["iPhone 13"] });
+    const page = await ctx.newPage();
+    await page.goto(`${BASE}/play/${code}`);
+    await page.getByPlaceholder("Tu nombre").fill(name);
+    await page.getByRole("button", { name: "Entrar" }).click();
+    await page.getByText(`¡Hola, ${name}!`).waitFor(T);
+    if (tag) await uploadOk(page, tag);
+    return { name, ctx, page };
+  }
+  const phones = [];
+  for (const n of NAMES) phones.push(await joinPhone(n, n.toLowerCase()));
+  const [ana, beto, caro] = phones;
+  const dani = await joinPhone("Dani"); // sin captura: mira la partida
+  const next = () => tv.getByRole("button", { name: "Siguiente" }).click();
+  const voteButtons = (p) => p.page.locator(".vote-buttons button");
+
+  /** Every phone votes its first option; resolves once the TV reveals the owners. */
+  async function everyoneVotes() {
+    for (const p of phones) {
+      await voteButtons(p).first().click();
+      // The last vote closes the question at once, so "Votaste a…" may never show: wait for the buttons to go.
+      await p.page.locator(".vote-buttons").waitFor({ state: "detached", timeout: 3000 });
+    }
+    await tv.getByText("La escuchan").waitFor(T);
+  }
+
+  await check("Selector de rondas: elegir 5 queda marcado", async () => {
+    await tv.getByText("¿De quién es?").waitFor(T);
+    await tv.getByRole("button", { name: "5", exact: true }).click();
+    await tv.locator('button[aria-pressed="true"]', { hasText: "5" }).waitFor(T);
+  });
+
+  let title = "";
+  await check("Empezar → TV: 'Ronda 1 de 5', canción y quién votó; celulares: misma canción", async () => {
+    await tv.getByRole("button", { name: "Empezar" }).click();
+    await tv.getByText("Ronda 1 de 5").waitFor(T);
+    title = (await tv.locator(".track-title").textContent()).trim();
+    for (const p of phones) await p.page.locator(".track-title", { hasText: title }).waitFor(T);
+    await tv.getByText("sin audio").waitFor(T); // catálogo falso en el playtest
+    return title;
+  });
+  await shot(tv, "dqe-01-tv-pregunta");
+
+  await check("Cada celular puede votar a los otros dos, nunca a sí mismo", async () => {
+    for (const p of phones) {
+      const opts = await voteButtons(p).allTextContents();
+      const expected = NAMES.filter((n) => n !== p.name);
+      if (opts.join(",") !== expected.join(",")) throw new Error(`${p.name}: ${opts.join(", ")}`);
+    }
+  });
+  await shot(ana.page, "dqe-02-celular-votar");
+
+  await check("Dani (sin captura) mira sin botones", async () => {
+    await dani.page.getByText("La partida empezó sin vos").waitFor(T);
+    if (await voteButtons(dani).count()) throw new Error("tiene botones de voto");
+  });
+
+  await check("Ana vota → 'Votaste a…'; la TV marca ✓ Ana sin revelar a quién", async () => {
+    await voteButtons(ana).first().click();
+    await ana.page.getByText(/Votaste a (Beto|Caro)/).waitFor(T);
+    await tv.locator(".vote-status li.voted", { hasText: "Ana" }).waitFor(T);
+    const tvText = await tv.locator("body").textContent();
+    if (tvText.includes("La escuchan") || tvText.includes("→")) throw new Error("la TV reveló algo");
+  });
+
+  await check("Recargar el celular tras votar conserva el voto", async () => {
+    await ana.page.reload();
+    await ana.page.getByText(/Votaste a (Beto|Caro)/).waitFor(T);
+  });
+
+  await check("Votan todos → la pregunta cierra antes del tiempo: 'La escuchan'", async () => {
+    for (const p of [beto, caro]) await voteButtons(p).first().click();
+    await tv.getByText("La escuchan").waitFor(T);
+    const owners = (await tv.locator(".owners").textContent()).trim();
+    if (!owners) throw new Error("sin dueños");
+    return owners;
+  });
+  await shot(tv, "dqe-03-tv-duenos");
+
+  await check("Cada celular ve su resultado", async () => {
+    const re = /¡Acertaste! \+\d+|No, era de|No votaste|Nadie te descubrió|Te descubrieron/;
+    for (const p of phones) await p.page.locator(".result").getByText(re).first().waitFor(T);
+  });
+  await shot(beto.page, "dqe-04-celular-resultado");
+
+  await check("La etapa de votos llega sola a los ~10 s, con el voto de cada uno", async () => {
+    const t0 = Date.now();
+    await tv.getByRole("heading", { name: "Votos" }).waitFor({ timeout: 12_000 });
+    const ms = Date.now() - t0;
+    const lines = await tv.locator(".votes li").count();
+    if (lines !== 3) throw new Error(`${lines} votos`);
+    if (ms < 7_000) throw new Error(`avanzó a los ${ms} ms`);
+    return `${(ms / 1000).toFixed(1)} s`;
+  });
+  await shot(tv, "dqe-05-tv-votos");
+
+  await check("Siguiente → 'Así va' con el ranking de los 3", async () => {
+    await next();
+    await tv.getByRole("heading", { name: "Así va" }).waitFor(T);
+    if ((await tv.locator(".scoreboard li").count()) !== 3) throw new Error("ranking incompleto");
+    await ana.page.getByText(/Vas \d+° con \d+ puntos/).waitFor(T);
+  });
+  await shot(tv, "dqe-06-tv-ranking");
+
+  await check("Siguiente → ronda 2 con otra canción", async () => {
+    await next();
+    await tv.getByText("Ronda 2 de 5").waitFor(T);
+    const t2 = (await tv.locator(".track-title").textContent()).trim();
+    if (t2 === title) throw new Error("repitió canción");
+    await voteButtons(ana).first().waitFor(T); // el voto anterior no se arrastra
+  });
+
+  const titles = new Set([title]);
+  await check("Rondas 2–5 (recargando la TV a mitad de la 3)", async () => {
+    for (let round = 2; round <= 5; round++) {
+      await tv.getByText(`Ronda ${round} de 5`).waitFor(T);
+      titles.add((await tv.locator(".track-title").textContent()).trim());
+      if (round === 3) {
+        await tv.reload();
+        await tv.getByText("Ronda 3 de 5").waitFor({ timeout: 5000 });
+      }
+      await everyoneVotes();
+      await next();
+      await next();
+      if (round < 5) await next();
+    }
+    if (titles.size !== 5) throw new Error(`${titles.size} canciones distintas`);
+    await tv.getByRole("heading", { name: "Así va" }).waitFor(T);
+    await next();
+  });
+
+  await check("Final: ranking en la TV y puesto en cada celular, puntajes coinciden", async () => {
+    await tv.getByText("¡Terminó!").waitFor(T);
+    const rows = await tv.locator(".scoreboard li").evaluateAll((lis) =>
+      lis.map((li) => [li.querySelector(".name").textContent, Number(li.querySelector(".score").textContent)]),
+    );
+    const tvScores = Object.fromEntries(rows);
+    for (const p of phones) {
+      const text = await p.page.locator(".result").textContent({ timeout: 3000 });
+      const m = /Quedaste (\d+)° con (\d+) puntos/.exec(text);
+      if (!m) throw new Error(`${p.name}: ${text}`);
+      if (Number(m[2]) !== tvScores[p.name]) throw new Error(`${p.name}: ${m[2]} ≠ TV ${tvScores[p.name]}`);
+    }
+    return rows.map(([n, s]) => `${n} ${s}`).join(", ");
+  });
+  await shot(tv, "dqe-07-tv-final");
+  await shot(caro.page, "dqe-08-celular-final");
+
+  await check("Jugar otra vez → lobby con los mismos jugadores listos y Empezar habilitado", async () => {
+    await tv.getByRole("button", { name: "Jugar otra vez" }).click();
+    await tv.locator(".code", { hasText: code }).waitFor(T);
+    await tv.locator('.players li[data-status="ready"]').nth(2).waitFor(T);
+    await tv.locator("button:not(:disabled)", { hasText: "Empezar" }).waitFor(T);
+    await ana.page.getByText("¡Listo! Leímos").waitFor(T);
+  });
+}
+
+const SCENARIOS = { sala, capturas, "de-quien-es": deQuienEs };
 
 // ---------- Infraestructura ----------
 
@@ -301,11 +469,11 @@ async function ensureDevServer() {
     }
     return () => {};
   }
-  console.log("Levantando npm run dev (MG_EXTRACTOR=fake)…");
+  console.log("Levantando npm run dev (MG_EXTRACTOR=fake, MG_CATALOG=fake)…");
   const dev = spawn("npm", ["run", "dev"], {
     detached: true,
     stdio: "ignore",
-    env: { ...process.env, MG_EXTRACTOR: "fake", MG_FAKE_DELAY_MS: "700" },
+    env: { ...process.env, MG_EXTRACTOR: "fake", MG_FAKE_DELAY_MS: "700", MG_CATALOG: "fake" },
   });
   await waitUntil(async () => (await isUp(`${BASE}/health`)) && (await isUp(`${BASE}/host`)), 30_000, "al dev server");
   return () => {

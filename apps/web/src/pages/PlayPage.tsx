@@ -4,10 +4,12 @@ import {
   ROOM_CODE_LENGTH,
   ROOM_ERROR_MESSAGES,
   extractionProblemMessage,
+  type MyVote,
   type PlayerTracks,
   type RoomState,
 } from "@mg/shared";
 import { useEffect, useRef, useState, type ChangeEvent, type FormEvent } from "react";
+import { PhoneGame } from "../game/PhoneGame.js";
 import { prepareScreenshot } from "../images.js";
 import { navigate } from "../router.js";
 import { createSocket, type AppSocket } from "../socket.js";
@@ -53,6 +55,7 @@ function RoomView({ code }: { code: string }) {
   const [room, setRoom] = useState<RoomState | null>(null);
   const [playerId, setPlayerId] = useState<string | null>(null);
   const [myTracks, setMyTracks] = useState<PlayerTracks | null>(null);
+  const [myVote, setMyVote] = useState<MyVote | null>(null);
   const [name, setName] = useState("");
   const [error, setError] = useState<string | null>(null);
 
@@ -61,6 +64,7 @@ function RoomView({ code }: { code: string }) {
     socketRef.current = socket;
     socket.on("room:state", setRoom);
     socket.on("player:tracks", setMyTracks);
+    socket.on("player:myVote", setMyVote);
     // On every (re)connection, come back as the same player if we have a token for this room.
     socket.on("connect", async () => {
       const token = storage.get(playerTokenKey(code));
@@ -134,13 +138,8 @@ function RoomView({ code }: { code: string }) {
 
   const me = room?.players.find((p) => p.id === playerId);
 
-  if (room?.phase === "playing") {
-    return (
-      <main className="center">
-        <h1>¡Arrancamos!</h1>
-        {me && !me.inGame && <p className="muted">La partida empezó sin vos: no tenías canciones listas.</p>}
-      </main>
-    );
+  if (room && room.phase !== "lobby" && room.game && socketRef.current && playerId) {
+    return <PhoneGame room={room} socket={socketRef.current} meId={playerId} myVote={myVote} />;
   }
 
   return (
