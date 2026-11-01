@@ -1,9 +1,10 @@
 # Progreso
 
 ## Estado actual
-- **Fase 3 — Extracción de capturas: completa** (2026-10-31), tag `fase-3`. Tests (89), playtest (26/26), eval real (100 % con Haiku 5.5) y prueba manual con celular OK.
-- **Playtest automatizado**: `npm run playtest` (escenarios `sala` y `capturas`). Usa `MG_EXTRACTOR=fake`.
-- **Próximo paso**: spec 04 escrito como borrador (`docs/specs/04-de-quien-es.md`), falta la aprobación del usuario para implementar. Pendiente opcional: un fixture de Apple Music.
+- **Fase 4 — "¿De quién es?" + audio Deezer: implementada** (2026-11-01), falta la prueba manual del usuario (celular + audio real en la TV) para cerrarla con tag `fase-4`. Tests 138, playtest 40/40.
+- Fase 3 — Extracción de capturas: completa (2026-10-31), tag `fase-3`.
+- **Playtest automatizado**: `npm run playtest` (escenarios `sala`, `capturas` y `de-quien-es`). Usa `MG_EXTRACTOR=fake` y `MG_CATALOG=fake`.
+- **Próximo paso**: prueba manual de la fase 4 (`npm run dev`, TV en la compu con sonido, celular del usuario + 2 jugadores más en pestañas o celulares), tag `fase-4`, y después spec 05. Pendiente opcional: un fixture de Apple Music.
 
 ## Fases
 | # | Fase | Estado |
@@ -11,7 +12,7 @@
 | 1 | Scaffolding, CLAUDE.md, GAME_DESIGN.md, hook de verificación | ✅ |
 | 2 | Sala en tiempo real con datos falsos | ✅ |
 | 3 | Extracción de capturas (Claude vision) | ✅ |
-| 4 | Modo "¿De quién es?" + audio Deezer | — |
+| 4 | Modo "¿De quién es?" + audio Deezer | 🟡 falta prueba manual |
 | 5 | Modo "¿Cuántos la tienen?" + matching | — |
 | 6 | Pulido y deploy | — |
 
@@ -24,6 +25,8 @@
 - Se acepta **cualquier playlist** (no solo "más escuchadas"); solo se rechaza lo que no es una playlist. Decisión del usuario al aprobar el spec 03: menos falsos rechazos; las instrucciones igual piden la de más escuchadas.
 - Extracción con **`claude-haiku-5-5`** (igualó a Opus 5.5 en el eval a ~1/35 del costo: ~US$0,0004 por captura, así que US$5 alcanzan para miles de envíos), salida estructurada (JSON schema), `effort: low`. Un request por envío (1–2 imágenes). Opus con `MG_EXTRACTION_MODEL=claude-opus-5-5`.
 - La API de Anthropic es aparte de Claude Pro: el usuario cargó US$5 de crédito prepago (2026-10-31); la key está en `.env` (no se commitea).
+- **Partida "¿De quién es?"** (spec 04, cambios del usuario al aprobar): no se excluye ninguna canción (aunque la tengan todos); la revelación tiene 3 etapas de 10 s (dueños → votos → ranking). Puntaje: acierto 100 + hasta 50 por velocidad; dueño no descubierto +100.
+- **Deezer**: las URLs de preview vencen a los ~15 min → se buscan por ronda (la actual y la siguiente), nunca se cachean. La ronda no espera la búsqueda.
 - Router propio mínimo (`apps/web/src/router.ts`) en vez de react-router: solo hay 3 rutas.
 
 ## Bitácora
@@ -63,3 +66,12 @@
 - Resultado: Opus 5.5 y Haiku 5.5 → 5/5 clasificación, 100 % recall y precisión. Haiku 3 corridas estables, ~2 s por captura, US$0,002 las 5. Pares reales vía `evaluateExtraction`: 14 y 17 canciones → ready; par con no-playlist → invalid.
 - Default cambiado a Haiku. Instrucciones del celular piden 2 capturas (una sola con encabezado trae 4–7 canciones).
 - Prueba manual: el usuario subió capturas reales desde su celular por WiFi → lista leída y "listo" en la TV. Fase cerrada.
+
+### 2026-11-01 — Fase 4 (implementación)
+- Spec 04 escrito y aprobado con cambios del usuario (no excluir canciones; revelación en 3 etapas de 10 s).
+- Lógica pura con TDD: `pickRounds` (reparto parejo por jugador, dueños por `trackKey`), `scoreRound`, `Game` (etapas, votos, cierre anticipado, `advanceIf(seq)` contra timers viejos, reloj inyectable). `RoomStore` integra settings, partida y "Jugar otra vez".
+- `MusicCatalog`: `DeezerCatalog` (fetch inyectable, timeout 4 s, recuerda solo los "no encontrado") y `FakeCatalog`. Búsqueda real verificada a mano.
+- Sockets: `host:settings`, `host:next`, `host:playAgain`, `player:vote`, `player:myVote` privado. Timers en el socket layer (uno por sala, etiquetado con partida + etapa). Test de integración con etapas cortas (400/60 ms): partida completa de 5 rondas.
+- Web: TV (selector de rondas, pregunta con audio y ✓ de quién votó, 3 etapas de revelación, final, "Jugar otra vez", botón para desbloquear el audio) y celular (votar, resultado, puesto, espectador).
+- Playtest `de-quien-es` 14/14; `sala` y `capturas` actualizados (40/40 en total). Un test de sockets falló una vez por timing (miraba solo el último estado); se arregló con un cursor sobre todos los estados recibidos y pasó 8/8 bajo carga de CPU.
+- **No probado todavía**: audio real de Deezer sonando en un navegador (el playtest usa el catálogo falso) ni el desbloqueo de autoplay en la TV.

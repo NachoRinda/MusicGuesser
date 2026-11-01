@@ -1,6 +1,6 @@
 # Spec 04 — Modo "¿De quién es?" + audio Deezer
 
-**Estado: aprobado** (2026-10-31). Cambios del usuario al aprobar: no se excluye ninguna canción (aunque la tengan todos, hay que jugársela por otro); la revelación tiene 3 etapas de 10 s (dueños → votos → ranking). Confirmados: título/artista visibles desde el principio, 5/10/15 rondas, voto definitivo, puntaje propuesto.
+**Estado: aprobado** (2026-10-31). Implementado 2026-11-01; falta la prueba manual con celular y audio real. Cambios del usuario al aprobar: no se excluye ninguna canción (aunque la tengan todos, hay que jugársela por otro); la revelación tiene 3 etapas de 10 s (dueños → votos → ranking). Confirmados: título/artista visibles desde el principio, 5/10/15 rondas, voto definitivo, puntaje propuesto.
 
 ## Objetivo
 Primera partida jugable de punta a punta: con ≥ 3 jugadores listos, el host elige cuántas rondas y empieza; en cada ronda la TV muestra y hace sonar (preview de 30 s de Deezer) una canción de alguno de los jugadores, todos votan desde el celular de quién es, se revela quién la escucha y quién votó a quién, se suman puntos, y al final hay ranking y "Jugar otra vez".
@@ -79,6 +79,14 @@ Primera partida jugable de punta a punta: con ≥ 3 jugadores listos, el host el
 - Errores nuevos: `NOT_IN_GAME` (no juega esta partida), `ALREADY_VOTED`, `INVALID_VOTE` (a sí mismo, a alguien que no juega, fuera de la etapa de pregunta), `NOT_PLAYING` (acción de partida fuera de `playing`), con mensaje en español.
 - Lógica pura separada de Socket.IO y de timers: `pickRounds(players, count, random)`, `scoreRound(owners, votes, durationMs)`, y una máquina de estados de partida (`Game`) con reloj inyectable; el socket layer solo agenda los timeouts y difunde.
 
+## Cambios al implementar
+- **La ronda no espera a Deezer**: arranca enseguida y el audio (y la tapa) aparecen en cuanto llega la búsqueda (≤ 4 s). Así ninguna ronda se demora y no hace falta una etapa "preparando".
+- La búsqueda avanzada de Deezer (`artist:"…" track:"…"`) no devolvió resultados en las pruebas reales; se usa la búsqueda común `q=<artista> <título>` y se filtra por coincidencia. Verificado en vivo: Bad Bunny, Bizarrap (título cortado con "…" y crédito "Bizarrap, Shakira"), Miley Cyrus y Soda Stereo encontradas; una inexistente → `null`.
+- Error extra `INVALID_SETTINGS` (rondas fuera de 5/10/15).
+- `reveal.points` (puntos de la ronda por jugador) para mostrar "+N" en el ranking.
+- `GET /health` informa también `catalog: "fake" | "deezer"`; el playtest levanta el server con `MG_CATALOG=fake` (sin red).
+- Si todos tienen la canción, el celular del dueño no muestra "Te descubrieron" (no había a quién esconderse).
+
 ## Casos borde
 - Menos canciones distintas que rondas elegidas → se juegan tantas rondas como canciones distintas haya.
 - Canción que tienen todos → se juega; acierta quien vote a cualquier otro.
@@ -88,12 +96,12 @@ Primera partida jugable de punta a punta: con ≥ 3 jugadores listos, el host el
 - Deezer devuelve otra versión (en vivo, remix) → se acepta: preferimos que suene algo del artista. Si el artista no coincide, sin audio.
 
 ## Criterios de aceptación
-- [ ] `pickRounds`: reparto parejo, sin repetidos, no excluye canciones, dueños múltiples por `trackKey`, determinístico con `random` fijo (tests unitarios).
-- [ ] `scoreRound`: acierto + bonus, incorrecto/sin voto 0, dueño no descubierto +100, co-dueños (tests unitarios).
-- [ ] Máquina de partida: pregunta → dueños → votos → ranking (10 s c/u) → siguiente → final; cierre anticipado cuando votaron todos los conectados; validaciones de voto; "Jugar otra vez" conserva jugadores y canciones y resetea puntajes (tests unitarios con reloj falso).
-- [ ] `DeezerCatalog`: arma la URL, elige el resultado correcto, `null` ante error/timeout/sin match (fetch mockeado). Una búsqueda real verificada a mano.
-- [ ] Integración por sockets: partida completa de 3 jugadores con timers falsos; el estado de la pregunta no filtra dueños ni votos; `player:myVote` solo al votante; reconexión a mitad de ronda.
-- [ ] Escenario `de-quien-es` en `npm run playtest`: TV + 3 celulares juegan una partida de 5 rondas (votos, revelación, ranking final, jugar otra vez).
+- [x] `pickRounds`: reparto parejo, sin repetidos, no excluye canciones, dueños múltiples por `trackKey`, determinístico con `random` fijo (tests unitarios).
+- [x] `scoreRound`: acierto + bonus, incorrecto/sin voto 0, dueño no descubierto +100, co-dueños (tests unitarios).
+- [x] Máquina de partida: pregunta → dueños → votos → ranking (10 s c/u) → siguiente → final; cierre anticipado cuando votaron todos los conectados; validaciones de voto; "Jugar otra vez" conserva jugadores y canciones y resetea puntajes (tests unitarios con reloj falso).
+- [x] `DeezerCatalog`: arma la URL, elige el resultado correcto, `null` ante error/timeout/sin match (fetch mockeado). Una búsqueda real verificada a mano.
+- [x] Integración por sockets: partida completa de 3 jugadores con etapas cortas (400/60 ms, timers reales); el estado de la pregunta no filtra dueños ni votos; `player:myVote` solo al votante; reconexión a mitad de ronda.
+- [x] Escenario `de-quien-es` en `npm run playtest`: TV + 3 celulares juegan una partida de 5 rondas (votos, revelación, ranking final, jugar otra vez).
 - [ ] Prueba manual con el celular del usuario y audio real de Deezer en la TV.
 
 ## Fuera de alcance
